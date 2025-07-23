@@ -167,6 +167,14 @@ def new_feature():
     # 15. Show cleanup preview
     run_bettergit("cleanup --dry-run", "Preview cleanup actions")
     
+    # 16. Show configuration command (don't run it as it opens an editor)
+    print(f"\n🔸 Configuration management")
+    print(f"Command: bit config")
+    print("-" * 60)
+    print("(This command opens the configuration file in your default editor)")
+    print("You can use it to customize accounts, defaults, and integrations.")
+    time.sleep(1)
+    
     print("\n" + "=" * 60)
     print("🎉 BetterGit demonstration completed!")
     print("\nThis demo showed:")
@@ -177,6 +185,7 @@ def new_feature():
     print("✅ Branch management")
     print("✅ Visual commit graph")
     print("✅ Repository cleanup")
+    print("✅ Configuration management")
     
     print(f"\nDemo repository created at: {Path.cwd().absolute()}")
     print("You can explore it further with BetterGit commands!")

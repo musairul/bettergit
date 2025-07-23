@@ -1203,5 +1203,57 @@ def cleanup(dry_run: bool):
         print_error(f"Cleanup failed: {e}")
 
 
+@main.command()
+def config():
+    """Open the BetterGit configuration file for editing."""
+    try:
+        config_file_path = config_manager.config_file
+        
+        # Ensure config file exists
+        if not config_file_path.exists():
+            print_info("Configuration file doesn't exist. Creating default configuration...")
+            config_manager._ensure_config_exists()
+        
+        print_info(f"Opening configuration file: {config_file_path}")
+        
+        # Try to open with the system's default editor
+        import subprocess
+        import platform
+        
+        system = platform.system()
+        if system == "Windows":
+            # On Windows, use the default associated program
+            os.startfile(str(config_file_path))
+        elif system == "Darwin":  # macOS
+            subprocess.run(["open", str(config_file_path)])
+        else:  # Linux and other Unix-like systems
+            # Try common editors in order of preference
+            editors = [
+                os.environ.get("EDITOR"),  # User's preferred editor
+                "code",      # VS Code
+                "nano",      # Nano (usually available)
+                "vim",       # Vim
+                "gedit",     # GNOME Text Editor
+                "kate",      # KDE Text Editor
+                "xdg-open"   # Default application
+            ]
+            
+            for editor in editors:
+                if editor and subprocess.run(["which", editor], capture_output=True).returncode == 0:
+                    subprocess.run([editor, str(config_file_path)])
+                    break
+            else:
+                print_warning("Could not find a suitable text editor. Please edit the file manually:")
+                print(f"  {config_file_path}")
+                return
+        
+        print_success(f"Configuration file opened! Make your changes and save the file.")
+        print_info("The configuration will be automatically reloaded when you run the next bit command.")
+        
+    except Exception as e:
+        print_error(f"Failed to open configuration file: {e}")
+        print_info(f"You can manually edit the configuration file at: {config_manager.config_file}")
+
+
 if __name__ == '__main__':
     main()
