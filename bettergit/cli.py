@@ -802,10 +802,10 @@ def _interactive_undo():
             print_info("No undoable actions found.")
             return
         
-        # Show selection menu
-        print_info("Select which action to undo (most recent first):")
+        # Show selection menu with rewind explanation
+        print_info("Select how far back to undo (arrow keys select all actions from top down to selection):")
         selected_action = select_from_list(
-            "Choose action to undo:",
+            "Choose undo point (will undo all actions from most recent down to this one):",
             [choice[1] for choice in choices]
         )
         
@@ -815,23 +815,59 @@ def _interactive_undo():
         
         # Find the selected action
         selected_index = next(i for i, (_, text) in enumerate(choices) if text == selected_action)
-        action_to_undo = choices[selected_index][0]
+        
+        # Actions to undo (from most recent down to selected one)
+        actions_to_undo = undoable_actions[:selected_index + 1]
+        
+        # Show what will be undone
+        print_info(f"This will undo {len(actions_to_undo)} action(s):")
+        for i, action in enumerate(actions_to_undo):
+            action_type = action['action_type']
+            details_dict = action.get('details', {})
+            if action_type == 'save':
+                message = details_dict.get('message', '')
+                details = f'"{message}"'
+            elif action_type == 'switch':
+                from_branch = details_dict.get('from_branch', '')
+                to_branch = details_dict.get('to_branch', '')
+                to_commit = details_dict.get('to_commit', '')
+                if to_commit:
+                    details = f"{from_branch} → {to_commit[:8]}"
+                else:
+                    details = f"{from_branch} → {to_branch}"
+            elif action_type == 'push':
+                branch = details_dict.get('branch', '')
+                force = details_dict.get('force', False)
+                details = f"to {branch}" + (" (force)" if force else "")
+            else:
+                details = str(details_dict)[:30]
+            
+            print_info(f"  {i+1}. {action_type.upper()}: {details}")
         
         # Confirm the undo
-        action_type = action_to_undo['action_type']
-        if not confirm(f"Undo {action_type} action?", default=True):
+        if not confirm(f"Undo these {len(actions_to_undo)} actions?", default=True):
             print_info("Undo cancelled.")
             return
         
-        # Perform the undo
-        _perform_undo(action_to_undo)
+        # Perform the undos in reverse order (newest first, as they depend on each other)
+        successful_undos = 0
+        for action in actions_to_undo:
+            try:
+                _perform_undo(action)
+                successful_undos += 1
+            except Exception as e:
+                print_warning(f"Failed to undo {action['action_type']}: {e}")
+                break
         
-        # Remove all actions from the selected one forward (since undoing affects later actions too)
-        actions_to_remove = undoable_actions[:selected_index + 1]
-        for action in actions_to_remove:
-            history_manager.remove_action(action['id'])
-        
-        print_success(f"Undid {action_type} action and {len(actions_to_remove)-1} subsequent actions.")
+        # Remove all successfully undone actions from history
+        if successful_undos > 0:
+            for action in actions_to_undo[:successful_undos]:
+                history_manager.remove_action(action['id'])
+            
+            if successful_undos == len(actions_to_undo):
+                print_success(f"Successfully undid {successful_undos} actions.")
+            else:
+                print_warning(f"Undid {successful_undos} of {len(actions_to_undo)} actions before encountering an error.")
         
     except Exception as e:
         print_error(f"Interactive undo failed: {e}")
