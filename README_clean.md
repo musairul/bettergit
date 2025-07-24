@@ -11,12 +11,12 @@ Git is powerful but painful. Every command requires memorizing cryptic flags, yo
 
 ## 🚀 BetterGit's Revolutionary Approach
 
-**Every command is interactive** - Never guess what to do again. Just type the command by itself:
+**Every command is interactive** - Never guess what to do again. Just type the command without arguments:
 
 ```bash
 bit switch                         # Interactive menu: branches, commits, accounts
 bit list                          # Choose: saves, branches, history, accounts  
-bit undo -i                          # Smart menu: undo commits, delete branches, fix ANY mistake
+bit undo                          # Smart menu: undo commits, delete branches
 bit clone                         # Your repos + clipboard detection + auto-setup
 ```
 
@@ -24,10 +24,9 @@ bit clone                         # Your repos + clipboard detection + auto-setu
 
 | Traditional Git | BetterGit Magic |
 |----------------|-----------------|
-| `git init` + `git remote add origin...` + `gh repo create...` | `bit init` does ALL of this + GitHub repo creation + automatic setup |
-| `git reset --soft HEAD~1` + `git branch -d name` + `git revert abc123` | `bit undo` handles ALL reversals + safe confirmations + interactive recovery |
 | `git checkout main` + `git checkout -b feature` + `git checkout abc123` | `bit switch` handles ALL of these + account switching + interactive menus |
 | `git log --oneline` + `git branch -a` + `git stash list` | `bit list` shows everything + command history + interactive selection |
+| `git init` + `git remote add origin...` + `gh repo create...` | `bit init` does ALL of this + GitHub repo creation + automatic setup |
 
 **Workflows that just work:**
 
@@ -46,6 +45,17 @@ bit workon 123                     # → Auto-creates descriptive branch
 bit clone                         # → Shows YOUR repos with descriptions
                                   # → Detects GitHub URL in clipboard
                                   # → Auto-opens in editor after clone
+```
+
+## 🚀 Get Started in 30 Seconds
+
+```bash
+# Clone and setup
+git clone https://github.com/musairul/bettergit.git && cd bettergit
+pip install -r requirements.txt
+
+# Your first magical experience
+python -m bettergit.cli switch    # See the interactive magic!
 ```
 
 ## 🎯 Core Superpowers
@@ -99,25 +109,6 @@ bit init my-amazing-project      # Does EVERYTHING:
                                 # ✅ Opens in your editor
 ```
 
-### ↩️ `bit undo` - The Ultimate Safety Net
-
-**Made a mistake? No problem.** BetterGit can undo ANYTHING safely:
-
-```bash
-bit undo                         # Interactive menu shows:
-                                # ✅ Recent commits to undo
-                                # ✅ Branches to delete
-                                # ✅ Actions to reverse
-                                # ✅ Safe revert options
-
-# Undo specific things:
-bit undo abc123                  # Undo a specific commit (safely)
-bit undo feature-branch          # Delete a branch (with protection)
-bit undo -i                      # Interactive mode - choose what to undo
-```
-
-**Never fear Git again** - BetterGit tracks everything and can reverse any operation safely, with confirmations and protection for important branches.
-
 ## 📋 Essential Commands
 
 | What You Want | BetterGit Magic | Why It's Better |
@@ -127,7 +118,9 @@ bit undo -i                      # Interactive mode - choose what to undo
 | See everything | `bit list` | Commits, branches, history, accounts - one command |
 | Start project | `bit init project` | Local + GitHub repo + setup automatically |
 | Get any repo | `bit clone` | Your repos listed + clipboard detection |
-| **Fix ANY mistake** | `bit undo` | **Safely reverse ANY operation - commits, branches, actions** |
+| Fix mistakes | `bit undo` | Safe, interactive, with confirmation |
+
+*🔥 Pro tip: Run any command without arguments for interactive mode!*
 
 ## 🎓 Learn As You Go
 
@@ -345,19 +338,15 @@ bit pr create
 - **🎯 Zero Learning Curve**: Interactive menus mean you never guess what to do
 - **🚀 Supercharged Commands**: One command does what Git needs 3-5 commands for  
 - **🛡️ Built-in Safety**: Confirmations, protections, and smart undo keep your work safe
-- **↩️ Ultimate Undo Power**: `bit undo` can reverse ANY mistake - commits, merges, deletions, anything
 - **🔗 GitHub Native**: Clone, PR, issues - all integrated seamlessly
 - **⚡ Lightning Fast**: Get more done with fewer commands and less thinking
 
-## 🚀 Get Started in 30 Seconds
+### 🎉 Ready to Transform Your Git Experience?
 
 ```bash
-# Clone and setup
 git clone https://github.com/musairul/bettergit.git && cd bettergit
 pip install -r requirements.txt
-
-# Your first magical experience
-python -m bettergit.cli switch    # See the interactive magic!
+python -m bettergit.cli switch     # Your mind will be blown 🤯
 ```
 
 ---
