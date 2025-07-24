@@ -156,13 +156,95 @@ def _create_remote_repository():
 
 
 @main.command()
-@click.argument('message', required=False)
-@click.option('--all', '-a', is_flag=True, help='Stage all changes automatically')
-def save(message: Optional[str], all: bool):
-    """Create a save (commit) with your changes."""
+@click.argument('args', nargs=-1)
+@click.option('-m', '--message', help='Commit message')
+@click.option('-f', '--files', help='Files to commit (comma-separated)')
+def save(args, message, files):
+    """Create a save (commit) with your changes.
+    
+    Usage: bit save [files] [message]
+           bit save -m "message" [files]
+           bit save -f file1,file2 "message"
+           bit save . "commit message"
+    
+    Examples:
+      bit save . "added new feature"
+      bit save file1.py file2.py "fixed bugs"
+      bit save -m "commit message" file.py
+      bit save -f "file1.py,file2.py" "update files"
+    """
     try:
         if not is_git_repository():
             print_error("Not in a Git repository. Use 'bit init' first.")
+            return
+        
+        # Parse arguments to extract files and message
+        parsed_files = []
+        parsed_message = message  # From -m option
+        
+        # Process files from -f option
+        if files:
+            parsed_files.extend([f.strip() for f in files.split(',')])
+        
+        # Process remaining args to find files and quoted message
+        remaining_args = list(args)
+        quoted_message = None
+        
+        # Look for quoted strings (message)
+        i = 0
+        while i < len(remaining_args):
+            arg = remaining_args[i]
+            
+            # Check if this starts a quoted message
+            if arg.startswith('"') or arg.startswith("'"):
+                quote_char = arg[0]
+                message_parts = [arg[1:]]  # Remove opening quote
+                
+                # If the quote ends in the same arg
+                if arg.endswith(quote_char) and len(arg) > 1:
+                    quoted_message = arg[1:-1]  # Remove both quotes
+                    remaining_args.pop(i)
+                    break
+                else:
+                    # Look for closing quote in subsequent args
+                    j = i + 1
+                    while j < len(remaining_args):
+                        next_arg = remaining_args[j]
+                        if next_arg.endswith(quote_char):
+                            message_parts.append(next_arg[:-1])  # Remove closing quote
+                            quoted_message = ' '.join(message_parts)
+                            # Remove all parts of the quoted message
+                            for _ in range(j - i + 1):
+                                remaining_args.pop(i)
+                            break
+                        else:
+                            message_parts.append(next_arg)
+                            j += 1
+                    break
+            else:
+                i += 1
+        
+        # Use quoted message if found, otherwise use -m option
+        if quoted_message:
+            parsed_message = quoted_message
+        
+        # Remaining args are files
+        parsed_files.extend(remaining_args)
+        
+        # Validate that we have a message
+        if not parsed_message:
+            print_error("A commit message is required. Use quotes around your message or -m option.")
+            print_info("Examples:")
+            print_info("  bit save . \"your commit message\"")
+            print_info("  bit save -m \"your commit message\" file.py")
+            return
+        
+        # Validate that we have files
+        if not parsed_files:
+            print_error("No files specified. Specify files to commit or use '.' for all files.")
+            print_info("Examples:")
+            print_info("  bit save . \"commit all files\"")
+            print_info("  bit save file1.py file2.py \"commit specific files\"")
             return
         
         # Check if there are any changes
@@ -171,47 +253,33 @@ def save(message: Optional[str], all: bool):
             print_info("No changes to save.")
             return
         
-        # If no message provided, enter interactive mode
-        if not message:
-            # Show current status
-            _show_git_status()
-            
-            # Let user select files to stage
-            if not all:
-                files_to_stage = _select_files_to_stage()
-                if not files_to_stage:
-                    print_info("No files selected, cancelling save.")
-                    return
-                
-                # Stage selected files
-                for file in files_to_stage:
-                    run_git_command(['add', file])
-            else:
-                run_git_command(['add', '.'])
-            
-            # Prompt for commit message
-            message = prompt_text("Commit message: ")
-            if not message:
-                print_warning("No commit message provided, cancelling save.")
-                return
-        else:
-            # Stage all changes if message provided
-            if all:
-                run_git_command(['add', '.'])
-            else:
-                # Check if there are staged changes
-                staged_output, _, _ = run_git_command(['diff', '--cached', '--name-only'])
-                if not staged_output:
+        # Stage the specified files
+        for file_pattern in parsed_files:
+            try:
+                # Check if file/pattern exists
+                if file_pattern == '.':
                     run_git_command(['add', '.'])
+                    print_info(f"Staged all files")
+                else:
+                    run_git_command(['add', file_pattern])
+                    print_info(f"Staged: {file_pattern}")
+            except GitError as e:
+                print_warning(f"Could not stage {file_pattern}: {e}")
+        
+        # Check if anything was actually staged
+        staged_output, _, _ = run_git_command(['diff', '--cached', '--name-only'])
+        if not staged_output:
+            print_warning("No files were staged. Nothing to commit.")
+            return
         
         # Create the commit
-        run_git_command(['commit', '-m', message])
-        print_success(f"Saved changes: {message}")
+        run_git_command(['commit', '-m', parsed_message])
+        print_success(f"Saved changes: {parsed_message}")
         
         # Log the action for undo
         history_manager.log_action(
             "save",
-            {"message": message},
+            {"message": parsed_message, "files": parsed_files},
             undo_command="git reset --soft HEAD~1"
         )
         
