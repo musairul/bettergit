@@ -1085,11 +1085,83 @@ def history(limit: int):
         
         for action in actions[-limit:]:
             action_id = str(action['id'])
-            timestamp = action['timestamp'][:19].replace('T', ' ')
-            action_type = action['action_type']
-            details = str(action.get('details', {}))[:50]
             
-            rows.append([action_id, timestamp, action_type, details])
+            # Make timestamp more human readable
+            timestamp_str = action['timestamp'][:19].replace('T', ' ')
+            # Convert to more friendly format like "2 hours ago" if recent
+            from datetime import datetime, timezone
+            try:
+                # Parse the timestamp - assume it's in local time since that's how it's stored
+                action_time = datetime.fromisoformat(timestamp_str)
+                
+                # Get current local time for comparison
+                now = datetime.now()
+                
+                # Calculate the difference
+                diff = now - action_time
+                total_seconds = diff.total_seconds()
+                
+                # Format based on time difference
+                if diff.days > 7:
+                    time_str = timestamp_str.split(' ')[0]  # Just the date for old entries
+                elif diff.days > 0:
+                    time_str = f"{diff.days}d ago"
+                elif total_seconds > 3600:
+                    hours = int(total_seconds // 3600)
+                    time_str = f"{hours}h ago"
+                elif total_seconds > 60:
+                    minutes = int(total_seconds // 60)
+                    time_str = f"{minutes}m ago"
+                elif total_seconds > 0:
+                    time_str = "just now"
+                else:
+                    # Future timestamp or same time
+                    time_str = "just now"
+            except Exception as e:
+                # Fallback to original timestamp if parsing fails
+                time_str = timestamp_str
+            
+            action_type = action['action_type']
+            
+            # Format details in a more human-readable way
+            details_dict = action.get('details', {})
+            if action_type == 'save':
+                message = details_dict.get('message', '')
+                files = details_dict.get('files', [])
+                if files and files != ['.']:
+                    file_list = ', '.join(files[:3])
+                    if len(files) > 3:
+                        file_list += f" (+{len(files)-3} more)"
+                    details = f'"{message}" ({file_list})'
+                else:
+                    details = f'"{message}"'
+            elif action_type == 'switch':
+                from_branch = details_dict.get('from_branch', '')
+                to_branch = details_dict.get('to_branch', '')
+                to_commit = details_dict.get('to_commit', '')
+                if to_commit:
+                    details = f"{from_branch} → {to_commit[:8]}"
+                else:
+                    details = f"{from_branch} → {to_branch}"
+            elif action_type == 'push':
+                branch = details_dict.get('branch', '')
+                force = details_dict.get('force', False)
+                details = f"to {branch}" + (" (force)" if force else "")
+            elif action_type == 'pull':
+                branch = details_dict.get('branch', '')
+                rebase = details_dict.get('rebase', False)
+                details = f"from {branch}" + (" (rebase)" if rebase else "")
+            elif action_type == 'stash':
+                message = details_dict.get('message', '')
+                details = f'"{message}"' if message else "untitled"
+            elif action_type == 'init':
+                project_name = details_dict.get('project_name', '')
+                details = f"project: {project_name}"
+            else:
+                # Fallback for other action types
+                details = str(details_dict)[:50]
+            
+            rows.append([action_id, time_str, action_type, details])
         
         display_table(f"{SYMBOLS['clipboard']} Action History", headers, rows)
         
