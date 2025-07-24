@@ -867,10 +867,20 @@ def stash(message: Optional[str]):
 
 @main.command()
 @click.option('--interactive', '-i', is_flag=True, help='Interactive mode to select which action to undo')
-def undo(interactive: bool):
-    """Undo the last state-changing action or interactively select which action to undo."""
+@click.argument('target', required=False)
+def undo(interactive: bool, target: Optional[str]):
+    """Undo the last state-changing action, or undo a specific commit/branch.
+    
+    Usage:
+      bit undo                    # Undo last action
+      bit undo -i                 # Interactive undo menu
+      bit undo <commit_hash>      # Delete/undo specific commit
+      bit undo <branch_name>      # Delete specific branch
+    """
     try:
-        if interactive:
+        if target:
+            _targeted_undo(target)
+        elif interactive:
             _interactive_undo()
         else:
             _single_undo()
@@ -1101,6 +1111,212 @@ def _perform_undo(action):
     
     else:
         print_warning(f"Don't know how to undo action type: {action_type}")
+
+
+def _targeted_undo(target: str):
+    """Undo a specific commit or delete a specific branch."""
+    try:
+        if not is_git_repository():
+            print_error("Not in a Git repository.")
+            return
+        
+        # Determine what type of target this is
+        target_type = _identify_undo_target(target)
+        
+        if target_type == 'commit':
+            _undo_specific_commit(target)
+        elif target_type == 'branch':
+            _delete_branch(target)
+        else:
+            print_error(f"Could not identify target '{target}'. "
+                       "It should be a commit hash or branch name.")
+            
+    except GitError as e:
+        print_error(f"Failed to undo target '{target}': {e}")
+
+
+def _identify_undo_target(target: str) -> str:
+    """Identify whether target is a commit hash or branch name."""
+    # Check if it's a branch (local or remote)
+    try:
+        branches_output, _, _ = run_git_command(['branch', '-a'])
+        for line in branches_output.split('\n'):
+            line = line.strip().lstrip('* ')
+            # Check both local and remote branch names
+            if line == target or line == f"remotes/origin/{target}":
+                return 'branch'
+            # Also check without the remotes/origin/ prefix
+            if line.startswith('remotes/origin/') and line[15:] == target:
+                return 'branch'
+    except GitError:
+        pass
+    
+    # Check if it looks like a commit hash (4+ hex characters)
+    if len(target) >= 4 and all(c in '0123456789abcdef' for c in target.lower()):
+        # Verify it's actually a valid commit
+        try:
+            run_git_command(['rev-parse', target])
+            return 'commit'
+        except GitError:
+            pass
+    
+    return 'unknown'
+
+
+def _undo_specific_commit(commit_hash: str):
+    """Delete/undo a specific commit."""
+    try:
+        # First, let's see if this commit exists and get its details
+        try:
+            commit_info, _, _ = run_git_command(['log', '-1', '--pretty=format:%h|%s|%an', commit_hash])
+            hash_part, message, author = commit_info.split('|', 2)
+        except GitError:
+            print_error(f"Commit '{commit_hash}' not found.")
+            return
+        
+        print_info(f"Target commit: {hash_part} \"{message}\" by {author}")
+        
+        # Check if this is the HEAD commit (most recent)
+        try:
+            head_hash, _, _ = run_git_command(['rev-parse', 'HEAD'])
+            head_short, _, _ = run_git_command(['rev-parse', '--short', 'HEAD'])
+            
+            # Check if the provided hash matches HEAD (either full or abbreviated)
+            if (head_hash.lower().startswith(commit_hash.lower()) or 
+                head_short.lower().startswith(commit_hash.lower()) or
+                commit_hash.lower() == head_hash.lower() or 
+                commit_hash.lower() == head_short.lower()):
+                # This is the HEAD commit, use reset --soft like normal undo
+                if not confirm(f"This will undo the most recent commit. Continue?", default=True):
+                    return
+                
+                run_git_command(['reset', '--soft', 'HEAD~1'])
+                print_success(f"Undid commit {hash_part} (changes moved to staging)")
+                return
+        except GitError:
+            pass
+        
+        # For non-HEAD commits, we need to use revert or interactive rebase
+        print_warning("This commit is not the most recent commit.")
+        print_info("Choose how to handle this:")
+        
+        options = [
+            "Create a revert commit (safer, keeps history)",
+            "Remove from history with interactive rebase (dangerous, rewrites history)"
+        ]
+        
+        selected = select_from_list("How do you want to undo this commit?", options)
+        
+        if selected is None:
+            print_info("Undo cancelled.")
+            return
+        
+        if "revert" in selected:
+            # Create a revert commit
+            if not confirm(f"Create a revert commit for {hash_part}?", default=True):
+                return
+            
+            run_git_command(['revert', '--no-edit', commit_hash])
+            print_success(f"Created revert commit for {hash_part}")
+            
+            # Log this action for potential undo
+            history_manager.log_action(
+                "revert",
+                {"commit": commit_hash, "message": message},
+                undo_command=f"git reset --hard HEAD~1"
+            )
+            
+        else:
+            # Interactive rebase to remove the commit
+            print_warning("This will rewrite git history and may cause issues for collaborators!")
+            if not require_confirmation("rewrite history", f"remove commit {hash_part}", "extreme"):
+                return
+            
+            # Find the parent of the commit to rebase from
+            try:
+                parent_hash, _, _ = run_git_command(['rev-parse', f'{commit_hash}^'])
+                run_git_command(['rebase', '--interactive', parent_hash])
+                print_success(f"Started interactive rebase to remove commit {hash_part}")
+                print_info("Complete the rebase by removing the target commit line and saving.")
+            except GitError as e:
+                print_error(f"Failed to start interactive rebase: {e}")
+        
+    except GitError as e:
+        print_error(f"Failed to undo commit: {e}")
+
+
+def _delete_branch(branch_name: str):
+    """Delete a specific branch."""
+    try:
+        current_branch = get_current_branch()
+        
+        # Prevent deleting the current branch
+        if branch_name == current_branch:
+            print_error(f"Cannot delete the current branch '{branch_name}'. Switch to another branch first.")
+            return
+        
+        # Prevent deleting main/master branches
+        if branch_name in ['main', 'master', 'develop']:
+            print_warning(f"Attempting to delete protected branch '{branch_name}'!")
+            if not require_confirmation("delete protected branch", branch_name, "extreme"):
+                return
+        
+        # Check if it's a local branch
+        try:
+            branches_output, _, _ = run_git_command(['branch'])
+            local_branches = [line.strip().lstrip('* ') for line in branches_output.split('\n') if line.strip()]
+            
+            if branch_name in local_branches:
+                # Check if branch has unmerged changes
+                try:
+                    run_git_command(['branch', '-d', branch_name])  # Try safe delete first
+                    print_success(f"Deleted local branch '{branch_name}'")
+                except GitError:
+                    # Branch has unmerged changes
+                    print_warning(f"Branch '{branch_name}' has unmerged changes!")
+                    if confirm(f"Force delete branch '{branch_name}' and lose unmerged changes?", default=False):
+                        run_git_command(['branch', '-D', branch_name])
+                        print_success(f"Force deleted local branch '{branch_name}'")
+                    else:
+                        print_info("Branch deletion cancelled.")
+                        return
+                
+                # Log the action
+                history_manager.log_action(
+                    "delete_branch",
+                    {"branch": branch_name, "type": "local"},
+                    undo_command=f"git switch -c {branch_name}"
+                )
+                
+            else:
+                print_error(f"Local branch '{branch_name}' not found.")
+                return
+        except GitError as e:
+            print_error(f"Failed to delete branch: {e}")
+        
+        # Ask if they also want to delete the remote branch
+        try:
+            remote_branches_output, _, _ = run_git_command(['branch', '-r'])
+            remote_branches = [line.strip().replace('origin/', '') for line in remote_branches_output.split('\n') 
+                             if line.strip() and 'origin/' in line]
+            
+            if branch_name in remote_branches:
+                if confirm(f"Also delete remote branch 'origin/{branch_name}'?", default=False):
+                    run_git_command(['push', 'origin', '--delete', branch_name])
+                    print_success(f"Deleted remote branch 'origin/{branch_name}'")
+                    
+                    # Log the remote deletion
+                    history_manager.log_action(
+                        "delete_branch",
+                        {"branch": branch_name, "type": "remote"},
+                        undo_command=f"git push origin {branch_name}"
+                    )
+        except GitError:
+            # Remote branch doesn't exist or other error, that's ok
+            pass
+        
+    except GitError as e:
+        print_error(f"Failed to delete branch: {e}")
 
 
 @main.group()
