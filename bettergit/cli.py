@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from .config import config_manager, ConfigError
 from .history import history_manager, HistoryError
@@ -1486,6 +1486,272 @@ def cleanup(dry_run: bool):
         
     except GitError as e:
         print_error(f"Cleanup failed: {e}")
+
+
+@main.command()
+@click.argument('repository_url', required=False)
+def clone(repository_url: Optional[str]):
+    """Clone a repository with interactive selection if no URL provided."""
+    try:
+        if repository_url:
+            # Direct clone with provided URL
+            _perform_clone(repository_url)
+        else:
+            # Interactive clone selection
+            _interactive_clone()
+            
+    except (GitError, IntegrationError, ConfigError) as e:
+        print_error(f"Failed to clone repository: {e}")
+
+
+def _interactive_clone():
+    """Show interactive menu to select a repository to clone."""
+    try:
+        # Check clipboard for git URLs
+        clipboard_url = _get_clipboard_git_url()
+        
+        # Get list of user's repositories
+        repo_list = _get_user_repositories()
+        
+        # Build choices list
+        choices = []
+        
+        # Add clipboard URL at the top if it's a valid git URL
+        if clipboard_url:
+            choices.append((clipboard_url, f"📋 From clipboard: {clipboard_url}"))
+        
+        # Add user repositories
+        for repo in repo_list:
+            repo_name = repo.get('name', 'Unknown')
+            description = repo.get('description', 'No description')
+            clone_url = repo.get('clone_url', repo.get('ssh_url', ''))
+            visibility = "🔒 Private" if repo.get('private', False) else "🌐 Public"
+            
+            display_text = f"{visibility} {repo_name} - {description[:50]}"
+            choices.append((clone_url, display_text))
+        
+        if not choices:
+            print_error("No repositories found and no valid git URL in clipboard.")
+            return
+        
+        # Show selection menu
+        print_info("Select a repository to clone:")
+        selected = select_from_list("Choose repository:", [choice[1] for choice in choices])
+        
+        if selected is None:
+            print_info("Clone cancelled.")
+            return
+        
+        # Find the selected repository URL
+        selected_url = None
+        for url, text in choices:
+            if text == selected:
+                selected_url = url
+                break
+        
+        if not selected_url:
+            print_error("Could not find repository URL.")
+            return
+        
+        # Perform the clone
+        _perform_clone(selected_url)
+        
+    except Exception as e:
+        print_error(f"Interactive clone failed: {e}")
+
+
+def _get_clipboard_git_url() -> Optional[str]:
+    """Check clipboard for a valid git repository URL."""
+    try:
+        import subprocess
+        import platform
+        import re
+        
+        system = platform.system()
+        
+        # Get clipboard content based on OS
+        if system == "Windows":
+            try:
+                import win32clipboard
+                win32clipboard.OpenClipboard()
+                data = win32clipboard.GetClipboardData()
+                win32clipboard.CloseClipboard()
+                # Clean up Windows line endings
+                data = data.strip().replace('\r\n', '').replace('\n', '')
+            except ImportError:
+                # Fallback to powershell if pywin32 not available
+                result = subprocess.run(
+                    ["powershell", "-command", "Get-Clipboard"],
+                    capture_output=True, text=True
+                )
+                data = result.stdout.strip() if result.returncode == 0 else ""
+        elif system == "Darwin":  # macOS
+            result = subprocess.run(["pbpaste"], capture_output=True, text=True)
+            data = result.stdout.strip() if result.returncode == 0 else ""
+        else:  # Linux/Unix
+            result = subprocess.run(["xclip", "-selection", "clipboard", "-o"], 
+                                  capture_output=True, text=True)
+            data = result.stdout.strip() if result.returncode == 0 else ""
+        
+        # Check if the clipboard content looks like a git URL
+        if data:
+            # Patterns for git URLs (more flexible)
+            git_patterns = [
+                r'^https://github\.com/[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?/?$',
+                r'^git@github\.com:[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?$',
+                r'^https://gitlab\.com/[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?/?$',
+                r'^git@gitlab\.com:[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?$',
+                r'^https://bitbucket\.org/[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?/?$',
+                r'^git@bitbucket\.org:[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?$',
+                # Generic git URL patterns
+                r'^https://[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?/?$',
+                r'^git@[a-zA-Z0-9\-_.]+:[a-zA-Z0-9\-_.]+/[a-zA-Z0-9\-_.]+(?:\.git)?$'
+            ]
+            
+            for pattern in git_patterns:
+                if re.match(pattern, data):
+                    return data
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to get clipboard content: {e}")
+        return None
+
+
+def _get_user_repositories() -> List[Dict[str, Any]]:
+    """Get list of user's repositories from GitHub."""
+    try:
+        # Get current account configuration
+        current_account = config_manager.get_current_account()
+        
+        # Get token
+        token = config_manager.get_credential(current_account)
+        if not token:
+            print_warning("No stored GitHub token found. Only clipboard option will be available.")
+            return []
+        
+        # Create GitHub client
+        github = GitHubClient(token)
+        
+        # Get user repositories (limit to recent ones)
+        repos = github.list_user_repositories(limit=20)
+        
+        # Sort by updated_at (most recent first)
+        repos.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+        
+        return repos
+        
+    except IntegrationError as e:
+        print_warning(f"Could not fetch repositories: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Failed to get user repositories: {e}")
+        return []
+
+
+def _perform_clone(repository_url: str):
+    """Perform the actual git clone operation."""
+    try:
+        # Extract repository name from URL for directory name
+        import re
+        
+        # Extract repo name from various URL formats
+        patterns = [
+            r'.*/([\w\-\.]+)\.git/?$',
+            r'.*/([\w\-\.]+)/?$',
+            r'.*:([\w\-\.]+/[\w\-\.]+)\.git$',
+            r'.*:([\w\-\.]+/[\w\-\.]+)$'
+        ]
+        
+        repo_name = None
+        for pattern in patterns:
+            match = re.search(pattern, repository_url)
+            if match:
+                repo_name = match.group(1)
+                if '/' in repo_name:
+                    repo_name = repo_name.split('/')[-1]
+                break
+        
+        if not repo_name:
+            repo_name = "cloned-repo"
+        
+        print_info(f"Cloning {repository_url}...")
+        
+        # Perform the clone
+        run_git_command(['clone', repository_url])
+        
+        print_success(f"Successfully cloned repository to {repo_name}")
+        
+        # Change to the cloned directory
+        cloned_path = Path(repo_name)
+        if cloned_path.exists() and cloned_path.is_dir():
+            # Store the absolute path before changing directories
+            absolute_cloned_path = cloned_path.absolute()
+            os.chdir(cloned_path)
+            print_info(f"Changed directory to {absolute_cloned_path}")
+            
+            # Open in default text editor
+            _open_in_editor(absolute_cloned_path)
+        else:
+            print_warning("Could not find cloned directory to change into.")
+        
+    except GitError as e:
+        print_error(f"Git clone failed: {e}")
+    except Exception as e:
+        print_error(f"Clone operation failed: {e}")
+
+
+def _open_in_editor(directory_path: Path):
+    """Open the directory in the user's configured default text editor."""
+    try:
+        import subprocess
+        import platform
+        
+        # Get the configured editor from config
+        editor = config_manager.get_default_editor()
+        
+        if not editor:
+            print_info(f"Repository cloned to: {directory_path}")
+            print_info("No editor configured. Set 'defaults.editor' in your config file.")
+            return
+        
+        system = platform.system()
+        
+        # Check if the configured editor exists
+        try:
+            if system == "Windows":
+                # Check if command exists
+                result = subprocess.run(["where", editor], 
+                                      capture_output=True, text=True)
+            else:
+                result = subprocess.run(["which", editor], 
+                                      capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print_info(f"Repository cloned to: {directory_path}")
+                print_warning(f"Configured editor '{editor}' not found in PATH.")
+                return
+        except FileNotFoundError:
+            print_info(f"Repository cloned to: {directory_path}")
+            print_warning(f"Configured editor '{editor}' not found.")
+            return
+        
+        # Try to open with the configured editor
+        try:
+            subprocess.run([editor, str(directory_path)], check=True)
+            print_success(f"Opened in {editor}")
+        except subprocess.CalledProcessError:
+            print_info(f"Repository cloned to: {directory_path}")
+            print_warning(f"Failed to open directory with '{editor}'.")
+        except FileNotFoundError:
+            print_info(f"Repository cloned to: {directory_path}")
+            print_warning(f"Editor '{editor}' not found.")
+        
+    except Exception as e:
+        logger.error(f"Failed to open editor: {e}")
+        print_info(f"Repository cloned to: {directory_path}")
+        print_warning("Could not open directory in text editor.")
 
 
 @main.command()

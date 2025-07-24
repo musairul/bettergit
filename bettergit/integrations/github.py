@@ -27,6 +27,15 @@ class GitHubClient(IntegrationClient):
         """Get the authenticated user's information."""
         return self._make_request("GET", "/user")
     
+    def list_user_repositories(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """List the authenticated user's repositories."""
+        params = {
+            "sort": "updated",
+            "per_page": min(limit, 100),  # GitHub API max is 100
+            "page": 1
+        }
+        return self._make_request("GET", "/user/repos", params=params)
+    
     def create_repository(self, name: str, description: str = "", 
                          private: bool = True) -> Dict[str, Any]:
         """Create a new GitHub repository."""

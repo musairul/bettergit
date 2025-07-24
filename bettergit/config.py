@@ -40,7 +40,8 @@ class ConfigManager:
             "defaults": {
                 "remote_service": "github",
                 "repo_visibility": "private",
-                "main_branch_name": "main"
+                "main_branch_name": "main",
+                "editor": "code"  # Default text editor command
             },
             "issue_tracker": {
                 "platform": "github",
@@ -167,6 +168,11 @@ class ConfigManager:
             if self.get_credential(alias):
                 stored.append(alias)
         return stored
+    
+    def get_default_editor(self) -> str:
+        """Get the configured default editor command."""
+        defaults = self.config.get('defaults', {})
+        return defaults.get('editor', 'code')  # Default to 'code' if not configured
 
 
 # Global config manager instance
