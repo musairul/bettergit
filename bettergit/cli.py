@@ -2068,7 +2068,7 @@ def config():
 
 @main.command()
 @click.option('--topic', '-t', 
-              type=click.Choice(['basics', 'saving', 'switching', 'history', 'remotes', 'undo', 'advanced']),
+              type=click.Choice(['config', 'basics', 'saving', 'switching', 'history', 'remotes', 'undo', 'advanced']),
               help='Focus on a specific topic')
 def tutorial(topic: Optional[str]):
     """Interactive tutorial to learn BetterGit commands and workflows.
@@ -2092,6 +2092,7 @@ def _interactive_tutorial():
     print_info("BetterGit makes version control intuitive and powerful. Let's learn the essentials!")
     
     topics = [
+        ("config", "⚙️  Configuration Setup - Set up your identity and GitHub integration"),
         ("basics", "🏁 Getting Started - Basic concepts and setup"),
         ("saving", "💾 Saving Changes - Creating commits and managing files"),
         ("switching", "🔄 Switching & Branches - Navigate between branches and commits"),
@@ -2131,7 +2132,9 @@ def _interactive_tutorial():
 
 def _show_tutorial_topic(topic: str):
     """Show tutorial content for a specific topic."""
-    if topic == 'basics':
+    if topic == 'config':
+        _tutorial_config()
+    elif topic == 'basics':
         _tutorial_basics()
     elif topic == 'saving':
         _tutorial_saving()
@@ -2147,12 +2150,315 @@ def _show_tutorial_topic(topic: str):
         _tutorial_advanced()
 
 
+def _tutorial_config():
+    """Tutorial for setting up BetterGit configuration."""
+    print_success("\n⚙️ Configuration Setup - Your BetterGit Identity")
+    print("="*80)
+    
+    sections = [
+        ("Why Configuration Matters", """
+BetterGit needs to know who you are to properly track your changes:
+• Your name and email appear in commit history
+• GitHub token enables remote operations (push, pull, PRs)
+• Multiple accounts let you switch between work/personal
+• Default settings customize BetterGit behavior
+
+Let's set this up step by step!
+"""),
+        ("Opening Configuration", """
+BetterGit stores all settings in a YAML configuration file.
+
+bit config    # Opens config file in your default editor
+
+This creates a config file if it doesn't exist. The file location is:
+• Windows: %APPDATA%\\BetterGit\\config.yml
+• macOS/Linux: ~/.config/bettergit/config.yml
+"""),
+        ("Setting Up Your Identity", """
+First, let's set up your basic identity. Add this to your config file:
+
+accounts:
+  personal:
+    name: "Your Full Name"
+    email: "you@example.com"
+  work:
+    name: "Your Full Name" 
+    email: "you@company.com"
+
+current_account: "personal"
+
+Replace with your actual information. You can have multiple accounts!
+"""),
+        ("GitHub Token Setup", """
+To work with GitHub repositories, you need a Personal Access Token.
+
+🔗 Step 1: Go to: https://github.com/settings/tokens
+📝 Step 2: Click "Generate new token" → "Generate new token (classic)"
+📅 Step 3: Set expiration (recommend: 90 days or No expiration for personal use)
+✅ Step 4: Select these permissions:
+   • repo (Full control of private repositories)
+   • workflow (Update GitHub Action workflows) 
+   • read:org (Read org membership)
+   • delete_repo (Delete repositories - optional)
+
+🔑 Step 5: Click "Generate token" and copy it immediately
+   Token starts with 'ghp_' or 'github_pat_'
+   ⚠️  You can only see it once - copy it now!
+
+💾 BetterGit will help you store this securely in the next step.
+"""),
+        ("SSH Keys (Optional)", """
+SSH keys provide an alternative to tokens for Git operations:
+
+🔐 Why use SSH keys?
+• More secure than HTTPS + token
+• No expiration (unless you set one)
+• Automatically used by Git once set up
+
+🛠️  Setup SSH Keys:
+1. Generate key: ssh-keygen -t ed25519 -C "your@email.com"
+2. Add to GitHub: https://github.com/settings/ssh
+3. Copy public key: cat ~/.ssh/id_ed25519.pub
+
+💡 BetterGit works with both HTTPS (token) and SSH keys.
+   We recommend starting with tokens - they're easier to set up!
+"""),
+        ("Default Settings", """
+Customize BetterGit behavior with default settings:
+
+defaults:
+  editor: "code"              # Your preferred editor (code, vim, nano)
+  main_branch_name: "main"    # Default branch name for new repos
+  repo_visibility: "private"  # Default visibility (private/public)
+  auto_push: false           # Automatically push after saves
+  confirm_destructive: true  # Ask before dangerous operations
+
+These settings apply to all new repositories and operations.
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+    
+    # Interactive token setup
+    if confirm("\n🔧 Would you like to set up your GitHub token now?", default=True):
+        _interactive_token_setup()
+    else:
+        print_info("💡 You can set up your token later with: bit tutorial -t config")
+    
+    # Show final configuration example
+    print(f"\n📄 Complete Configuration Example")
+    print("-" * 60)
+    print("""
+# BetterGit Configuration File (~/.config/bettergit/config.yml)
+accounts:
+  personal:
+    name: "John Doe"
+    email: "john@personal.com"
+  work:
+    name: "John Doe"
+    email: "john@company.com"
+
+current_account: "personal"
+
+defaults:
+  editor: "code"  # VS Code
+  main_branch_name: "main"
+  repo_visibility: "private"  # or "public"
+  auto_push: false
+  confirm_destructive: true
+
+github:
+  default_base_branch: "main"
+  auto_delete_merged_branches: true
+""")
+    
+    print_info("\n✅ Configuration complete! Your BetterGit is ready to use.")
+    print_info("💡 Tip: Run 'bit config' anytime to modify these settings.")
+    print_info("🚀 Next: Try 'bit tutorial -t basics' to learn essential commands!")
+
+
+def _interactive_token_setup():
+    """Interactive setup for GitHub token."""
+    try:
+        print_success("\n🔐 GitHub Token Setup Wizard")
+        print("="*50)
+        print_info("This will help you save your GitHub token securely.")
+        
+        # Get current account
+        try:
+            current_account = config_manager.get_current_account()
+            print_info(f"Setting up token for account: {current_account}")
+        except:
+            current_account = "personal"
+            print_warning(f"Using default account: {current_account}")
+        
+        # Check if token already exists
+        existing_token = config_manager.get_credential(current_account)
+        if existing_token:
+            print_warning(f"⚠️  A token already exists for {current_account}")
+            if not confirm("Replace the existing token?", default=False):
+                return
+        
+        # Reminder about token creation
+        print_info("\n📋 Quick Reminder:")
+        print("1. Go to: https://github.com/settings/tokens")
+        print("2. Generate new token (classic)")
+        print("3. Select: repo, workflow, read:org permissions")
+        print("4. Copy the token (starts with 'ghp_' or 'github_pat_')")
+        
+        if not confirm("\nDo you have your GitHub token ready?", default=True):
+            print_info("No problem! Come back when you have your token.")
+            print_info("Run: bit tutorial -t config")
+            return
+        
+        # Prompt for token
+        print_info("\n🔑 Paste your GitHub token below:")
+        print_warning("(The token will be hidden as you type)")
+        token = prompt_password("GitHub Token: ")
+        
+        if not token:
+            print_warning("No token entered. Skipping token setup.")
+            return
+        
+        # Validate token format
+        if not (token.startswith('ghp_') or token.startswith('github_pat_')):
+            print_warning("⚠️  Token doesn't look like a GitHub token")
+            print_info("Valid tokens start with 'ghp_' or 'github_pat_'")
+            if not confirm("Continue anyway?", default=False):
+                return
+        
+        # Store the token
+        config_manager.store_credential(current_account, token)
+        
+        # Set environment variable for this session
+        _set_environment_variable('GITHUB_TOKEN', token)
+        
+        print_success("✅ Token saved successfully!")
+        print_info("� Token is stored securely in BetterGit's credential store")
+        print_info("🌍 Environment variable GITHUB_TOKEN set for this session")
+        
+        # Test the token
+        if confirm("\n🧪 Test the token now?", default=True):
+            _test_github_token(token)
+        else:
+            print_info("💡 You can test it later with any GitHub operation (bit push, bit clone, etc.)")
+            
+    except KeyboardInterrupt:
+        print_info("\n\nToken setup cancelled.")
+    except Exception as e:
+        print_error(f"Failed to set up token: {e}")
+        print_info("💡 You can try again later with: bit tutorial -t config")
+
+
+def _set_environment_variable(name: str, value: str):
+    """Set environment variable for current session and provide instructions for persistence."""
+    try:
+        import os
+        import platform
+        
+        # Set for current Python session
+        os.environ[name] = value
+        
+        system = platform.system()
+        
+        if system == "Windows":
+            print_info(f"💾 Setting {name} for Windows...")
+            try:
+                import subprocess
+                # Try to use setx for persistent setting
+                result = subprocess.run(['setx', name, value], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    print_success(f"✅ {name} will be available in new terminal sessions")
+                else:
+                    print_warning(f"⚠️  Could not set persistent variable. Manual setup needed.")
+                    print_info(f"To set manually: setx {name} \"{value}\"")
+            except Exception:
+                print_warning("Could not set persistent environment variable")
+                print_info(f"💡 To set manually in PowerShell:")
+                print(f"    setx {name} \"{value}\"")
+                
+        else:
+            # For Unix systems, provide instructions
+            shell = os.environ.get('SHELL', '/bin/bash')
+            shell_name = shell.split('/')[-1]
+            
+            config_files = {
+                'bash': ['~/.bashrc', '~/.bash_profile'],
+                'zsh': ['~/.zshrc'],
+                'fish': ['~/.config/fish/config.fish']
+            }
+            
+            files = config_files.get(shell_name, ['~/.bashrc'])
+            
+            print_info(f"💡 To make {name} permanent, add this line to {files[0]}:")
+            print(f"    export {name}='{value}'")
+            
+    except Exception as e:
+        print_warning(f"Could not set environment variable: {e}")
+        print_info(f"💡 Manual setup: Set {name}='{value}' in your system")
+
+
+def _test_github_token(token: str):
+    """Test GitHub token by making a simple API call."""
+    try:
+        print_info("🔍 Testing your GitHub token...")
+        
+        github = GitHubClient(token)
+        
+        # Make a simple API call to get user info
+        user_info = github._make_request('GET', '/user')
+        
+        if user_info:
+            username = user_info.get('login', 'Unknown')
+            name = user_info.get('name', username)
+            avatar = user_info.get('avatar_url', '')
+            
+            print_success(f"🎉 Token works perfectly!")
+            print_info(f"👤 Connected as: {name} (@{username})")
+            
+            # Get some additional info
+            public_repos = user_info.get('public_repos', 0)
+            private_repos = user_info.get('total_private_repos', 0)
+            print_info(f"📦 Repositories: {public_repos} public, {private_repos} private")
+            
+        else:
+            print_warning("⚠️  Token test was inconclusive")
+            print_info("The token might still work - this could be a network issue.")
+            
+    except Exception as e:
+        print_error(f"❌ Token test failed: {e}")
+        print_warning("This could mean:")
+        print("• The token is invalid or expired")
+        print("• Network connectivity issues")
+        print("• GitHub API is temporarily unavailable")
+        print_info("💡 Try using the token with a Git operation to verify it works.")
+
+
 def _tutorial_basics():
     """Tutorial for basic concepts."""
     print_success("\n🏁 Getting Started with BetterGit")
     print("="*80)
     
     sections = [
+        ("First Things First", """
+⚠️  IMPORTANT: Before using BetterGit, you should set up your configuration!
+
+Run: bit tutorial -t config
+
+This sets up:
+• Your name and email (required for commits)
+• GitHub token (needed for remote operations)
+• Multiple accounts (work/personal)
+• Default settings
+
+Don't worry - you can always come back to this tutorial after setup!
+"""),
         ("What is BetterGit?", """
 BetterGit is a modern, intuitive interface for Git that makes version control easy.
 It uses familiar concepts:
@@ -2188,6 +2494,7 @@ Every command has built-in help:
 
 bit --help              # Show all commands
 bit save --help         # Help for specific command
+bit tutorial -t config  # Learn about configuration setup
 bit tutorial -t saving  # Learn about a specific topic
 
 The interactive menus will guide you through complex operations!
