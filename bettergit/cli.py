@@ -2300,13 +2300,18 @@ accounts:
   personal:
     name: "Your Full Name"
     email: "you@example.com"
-    token: $GITHUB_TOKEN
+    ssh_key: "~/.ssh/id_ed25519.pub"  # Optional, if you use SSH keys
   work:
     name: "Your Full Name" 
     email: "you@company.com"
-    token: $GITHUB_TOKEN
+    ssh_key: "~/.ssh/id_ed25519.pub"  # Optional, if you use SSH keys
 
 current_account: "personal"
+
+The accounts dont have to be named "personal" or "work". You can name them whatever you like.
+You add an account by adding a new section under `accounts:` with a unique name and following
+the same structure as the others.
+This allows you to easily switch between different identities.
 
 Replace with your actual information. You can have multiple accounts!
 """),
@@ -2340,7 +2345,7 @@ SSH keys provide the best authentication method for Git operations:
 🛠️  Setup SSH Keys:
 1. Generate key: ssh-keygen -t ed25519 -C "your@email.com"
 2. Add to GitHub: https://github.com/settings/ssh
-3. Copy public key: cat ~/.ssh/id_ed25519.pub (Linux/Mac) or type ~/.ssh/id_ed25519.pub (Windows)
+3. Update the config file with your SSH key path: (by default it is ~/.ssh/id_ed25519.pub)
 
 ✨ BetterGit will automatically detect your SSH keys and use them when:
    • Creating new repositories
@@ -2354,11 +2359,10 @@ SSH keys provide the best authentication method for Git operations:
 Customize BetterGit behavior with default settings:
 
 defaults:
-  editor: "code"              # Your preferred editor (code, vim, nano)
-  main_branch_name: "main"    # Default branch name for new repos
-  repo_visibility: "private"  # Default visibility (private/public)
-  auto_push: false           # Automatically push after saves
-  confirm_destructive: true  # Ask before dangerous operations
+  editor: code              # Your preferred text editor (e.g., code, nano, vim)
+  main_branch_name: main    # Default main branch name (e.g., main, master)
+  remote_service: github    # Default remote service (github, gitlab, bitbucket)
+  repo_visibility: private  # Default repository visibility (private, public)
 
 These settings apply to all new repositories and operations.
 """)
@@ -2376,33 +2380,6 @@ These settings apply to all new repositories and operations.
         _interactive_token_setup()
     else:
         print_info("💡 You can set up your token later with: bit tutorial -t config")
-    
-    # Show final configuration example
-    print(f"\n📄 Complete Configuration Example")
-    print("-" * 60)
-    print("""
-# BetterGit Configuration File (~/.config/bettergit/config.yml)
-accounts:
-  personal:
-    name: "John Doe"
-    email: "john@personal.com"
-  work:
-    name: "John Doe"
-    email: "john@company.com"
-
-current_account: "personal"
-
-defaults:
-  editor: "code"  # VS Code
-  main_branch_name: "main"
-  repo_visibility: "private"  # or "public"
-  auto_push: false
-  confirm_destructive: true
-
-github:
-  default_base_branch: "main"
-  auto_delete_merged_branches: true
-""")
     
     print_info("\n✅ Configuration complete! Your BetterGit is ready to use.")
     print_info("💡 Tip: Run 'bit config' anytime to modify these settings.")
