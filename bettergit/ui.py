@@ -425,7 +425,7 @@ def display_status_summary(status: Dict[str, Any]):
         
         # Display the content
         if content:
-            print("\n".join(content))
+            console.print("\n".join(content))
         
     except Exception as e:
         logger.error(f"Status display failed: {e}")
