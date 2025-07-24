@@ -325,10 +325,8 @@ def list_command(list_type: Optional[str], limit: int, detailed: bool):
     """List repository components (branches, saves, remotes, accounts, stashes)."""
     try:
         if not list_type:
-            # Show all lists
-            _list_branches()
-            _list_recent_saves()
-            _list_accounts()
+            # Show interactive menu to choose what to list
+            _interactive_list_menu(limit, detailed)
             return
         
         if list_type == 'branches':
@@ -346,6 +344,52 @@ def list_command(list_type: Optional[str], limit: int, detailed: bool):
             
     except (GitError, ConfigError) as e:
         print_error(f"Failed to list {list_type}: {e}")
+
+
+def _interactive_list_menu(limit: int, detailed: bool):
+    """Show interactive menu to choose what to list."""
+    menu_options = [
+        ("branches", "📁 Branches - Show all local and remote branches"),
+        ("saves", "💾 Saves - Show recent commits/saves"),
+        ("remotes", "🌐 Remotes - Show configured remote repositories"),
+        ("accounts", "👤 Accounts - Show configured user accounts"),
+        ("stashes", "📦 Stashes - Show stashed changes"),
+        ("history", "📋 History - Show action history")
+    ]
+    
+    choice_texts = [option[1] for option in menu_options]
+    
+    print_info("What would you like to list?")
+    selected = select_from_list("Choose an option:", choice_texts)
+    
+    if selected is None:
+        print_info("List cancelled.")
+        return
+    
+    # Find the selected option
+    selected_key = None
+    for key, text in menu_options:
+        if text == selected:
+            selected_key = key
+            break
+    
+    if not selected_key:
+        print_error("Invalid selection.")
+        return
+    
+    # Execute the selected list function
+    if selected_key == 'branches':
+        _list_branches()
+    elif selected_key == 'saves':
+        _list_saves(limit)
+    elif selected_key == 'remotes':
+        _list_remotes()
+    elif selected_key == 'accounts':
+        _list_accounts()
+    elif selected_key == 'stashes':
+        _list_stashes()
+    elif selected_key == 'history':
+        _list_history(limit, detailed)
 
 
 def _list_branches():

@@ -119,7 +119,7 @@ def print_warning(message: str):
 
 def print_info(message: str):
     """Print an info message in blue."""
-    _safe_print(f"{SYMBOLS['info']} {message}", style="bold blue")
+    _safe_print(f"{SYMBOLS['info']}  {message}", style="bold blue")
 
 
 def confirm(message: str, default: bool = False) -> bool:
@@ -184,6 +184,94 @@ def select_from_list(message: str, choices: List[Union[str, tuple]],
         return None
     except Exception as e:
         logger.error(f"List selection failed: {e}")
+        return None
+
+
+def select_undo_point(message: str, choices: List[str]) -> Optional[int]:
+    """Show a custom undo point selection with progressive highlighting.
+    
+    Returns the index of the selected choice, or None if cancelled.
+    """
+    try:
+        import msvcrt
+        import os
+        
+        if not choices:
+            print_warning("No options available to select from.")
+            return None
+        
+        current_pos = 0
+        
+        def display_choices():
+            # Clear screen and show choices
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(f"\n{message}")
+            print("Use arrow keys to navigate, Enter to select, Esc to cancel")
+            print(f"Will undo {current_pos + 1} action(s)\n")
+            
+            for i, choice in enumerate(choices):
+                if i <= current_pos:
+                    # Highlight selected items in blue with > prefix
+                    print(f"\033[94m> {choice}\033[0m")
+                else:
+                    # Normal display for unselected items
+                    print(f"  {choice}")
+        
+        # Initial display
+        display_choices()
+        
+        while True:
+            # Get key input
+            if os.name == 'nt':  # Windows
+                key = msvcrt.getch()
+                if key == b'\xe0':  # Arrow key prefix on Windows
+                    key = msvcrt.getch()
+                    if key == b'H':  # Up arrow
+                        if current_pos > 0:
+                            current_pos -= 1
+                            display_choices()
+                    elif key == b'P':  # Down arrow
+                        if current_pos < len(choices) - 1:
+                            current_pos += 1
+                            display_choices()
+                elif key == b'\r':  # Enter key
+                    return current_pos
+                elif key == b'\x1b':  # Escape key
+                    return None
+            else:  # Unix/Linux/macOS
+                import sys, tty, termios
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                try:
+                    tty.setraw(sys.stdin.fileno())
+                    key = sys.stdin.read(1)
+                    if key == '\x1b':  # Escape sequence
+                        key2 = sys.stdin.read(1)
+                        if key2 == '[':
+                            key3 = sys.stdin.read(1)
+                            if key3 == 'A':  # Up arrow
+                                if current_pos > 0:
+                                    current_pos -= 1
+                                    display_choices()
+                            elif key3 == 'B':  # Down arrow
+                                if current_pos < len(choices) - 1:
+                                    current_pos += 1
+                                    display_choices()
+                        elif key2 == '':  # Just escape
+                            return None
+                    elif key == '\r' or key == '\n':  # Enter
+                        return current_pos
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    
+    except KeyboardInterrupt:
+        return None
+    except Exception as e:
+        logger.error(f"Undo selection failed: {e}")
+        # Fallback to regular selection
+        result = select_from_list(message, choices)
+        if result:
+            return choices.index(result)
         return None
 
 
