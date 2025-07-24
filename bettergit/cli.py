@@ -2066,5 +2066,572 @@ def config():
         print_info(f"You can manually edit the configuration file at: {config_manager.config_file}")
 
 
+@main.command()
+@click.option('--topic', '-t', 
+              type=click.Choice(['basics', 'saving', 'switching', 'history', 'remotes', 'undo', 'advanced']),
+              help='Focus on a specific topic')
+def tutorial(topic: Optional[str]):
+    """Interactive tutorial to learn BetterGit commands and workflows.
+    
+    Learn how to use BetterGit with hands-on examples and explanations.
+    """
+    try:
+        if topic:
+            _show_tutorial_topic(topic)
+        else:
+            _interactive_tutorial()
+    except KeyboardInterrupt:
+        print_info("\nTutorial cancelled. Run 'bit tutorial' anytime to continue learning!")
+    except Exception as e:
+        print_error(f"Tutorial error: {e}")
+
+
+def _interactive_tutorial():
+    """Show interactive tutorial menu."""
+    print_success("🎓 Welcome to the BetterGit Tutorial!")
+    print_info("BetterGit makes version control intuitive and powerful. Let's learn the essentials!")
+    
+    topics = [
+        ("basics", "🏁 Getting Started - Basic concepts and setup"),
+        ("saving", "💾 Saving Changes - Creating commits and managing files"),
+        ("switching", "🔄 Switching & Branches - Navigate between branches and commits"),
+        ("history", "📋 History & Listing - View commits, branches, and actions"),
+        ("remotes", "🌐 Remote Repositories - Working with GitHub and remotes"),
+        ("undo", "↩️  Undoing Changes - Fix mistakes and revert actions"),
+        ("advanced", "⚡ Advanced Features - Power user tips and workflows")
+    ]
+    
+    while True:
+        print("\n" + "="*80)
+        print_info("Choose a topic to learn about (or press Ctrl+C to exit):")
+        
+        topic_texts = [topic[1] for topic in topics]
+        selected = select_from_list("Select a tutorial topic:", topic_texts)
+        
+        if selected is None:
+            break
+        
+        # Find the selected topic
+        selected_key = None
+        for key, text in topics:
+            if text == selected:
+                selected_key = key
+                break
+        
+        if selected_key:
+            _show_tutorial_topic(selected_key)
+            
+            # Ask if they want to continue
+            if not confirm("\nWould you like to learn about another topic?", default=True):
+                break
+    
+    print_success("\n🎉 Thanks for using the BetterGit tutorial!")
+    print_info("Remember: You can always run 'bit tutorial -t <topic>' to review specific topics.")
+
+
+def _show_tutorial_topic(topic: str):
+    """Show tutorial content for a specific topic."""
+    if topic == 'basics':
+        _tutorial_basics()
+    elif topic == 'saving':
+        _tutorial_saving()
+    elif topic == 'switching':
+        _tutorial_switching()
+    elif topic == 'history':
+        _tutorial_history()
+    elif topic == 'remotes':
+        _tutorial_remotes()
+    elif topic == 'undo':
+        _tutorial_undo()
+    elif topic == 'advanced':
+        _tutorial_advanced()
+
+
+def _tutorial_basics():
+    """Tutorial for basic concepts."""
+    print_success("\n🏁 Getting Started with BetterGit")
+    print("="*80)
+    
+    sections = [
+        ("What is BetterGit?", """
+BetterGit is a modern, intuitive interface for Git that makes version control easy.
+It uses familiar concepts:
+• 'saves' instead of 'commits' - think of saving your game progress
+• 'switch' to move between branches or states
+• Interactive menus for complex operations
+• Human-readable output and error messages
+"""),
+        ("Essential Commands", """
+Here are the most important commands to know:
+
+📋 bit status           - See what's changed in your project
+💾 bit save            - Save your changes (like a game save point)
+🔄 bit switch <branch> - Switch to a different branch or commit
+📁 bit list            - Interactive menu to list things
+↩️  bit undo           - Undo the last action
+🎓 bit tutorial        - This tutorial!
+"""),
+        ("Your First Repository", """
+To start using BetterGit:
+
+1. In a new project:
+   bit init my-project    # Creates new repository and folder
+   
+2. In an existing folder:
+   bit init              # Initialize git in current folder
+   
+3. Check status:
+   bit status            # See what files have changed
+"""),
+        ("Getting Help", """
+Every command has built-in help:
+
+bit --help              # Show all commands
+bit save --help         # Help for specific command
+bit tutorial -t saving  # Learn about a specific topic
+
+The interactive menus will guide you through complex operations!
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_saving():
+    """Tutorial for saving changes."""
+    print_success("\n💾 Saving Changes - Your Progress Checkpoints")
+    print("="*80)
+    
+    sections = [
+        ("Understanding Saves", """
+In BetterGit, 'saves' are like checkpoints in a video game:
+• Each save captures the current state of all your files
+• You can return to any save point later
+• Saves include a message describing what changed
+• Think: "I just fixed the login bug" → save it!
+"""),
+        ("Basic Saving", """
+Simple ways to save your changes:
+
+bit save "your message"     # Save all changes with a message
+bit save                    # Interactive mode - choose files and message
+bit save file.py "fix bug"  # Save specific files only
+
+The message should describe WHAT you did, not how:
+✅ "Fix login validation bug"
+❌ "Changed line 45 in auth.py"
+"""),
+        ("Interactive Saving", """
+When you run 'bit save' with no arguments, you get an interactive menu:
+
+1. Select which files to include in your save
+2. Enter a descriptive message
+3. BetterGit creates your save point
+
+This is perfect when you have multiple changes and want to save them separately.
+"""),
+        ("Advanced Saving", """
+More powerful saving options:
+
+bit save . "message"        # Save everything in current folder
+bit save *.py "fix bugs"    # Save all Python files
+bit save file1 file2 "msg"  # Save specific files
+
+Pro tip: Save early and often! It's better to have many small saves
+than few large ones. Each save should represent one logical change.
+"""),
+        ("What Gets Saved?", """
+BetterGit saves:
+✅ New files you've created
+✅ Modified existing files
+✅ Deleted files
+❌ Files in .gitignore
+❌ Very large files (over 100MB by default)
+
+Check what will be saved with: bit status
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_switching():
+    """Tutorial for switching between branches and commits."""
+    print_success("\n🔄 Switching & Branches - Navigate Your Project")
+    print("="*80)
+    
+    sections = [
+        ("What is Switching?", """
+Switching lets you move between different versions of your project:
+• Switch to different branches (parallel development lines)
+• Go back to previous saves (commits)
+• Switch between different user accounts
+• Create new branches on the fly
+"""),
+        ("Basic Switching", """
+Common switching commands:
+
+bit switch main           # Switch to main branch
+bit switch feature-login  # Switch to a feature branch
+bit switch abc123         # Go to a specific commit (by hash)
+
+If the branch doesn't exist, BetterGit will ask if you want to create it!
+"""),
+        ("Creating Branches", """
+BetterGit makes branch creation easy:
+
+bit switch new-feature -c    # Create and switch to new branch
+bit switch new-feature       # Interactive prompt to create
+
+Branches are perfect for:
+• Trying new features without breaking main code
+• Experimenting with different approaches
+• Working on multiple features simultaneously
+"""),
+        ("Understanding Branches", """
+Think of branches like parallel universes of your project:
+
+main branch:     A---B---C---D
+                      \\
+feature branch:        E---F---G
+
+Each branch has its own history of saves. You can work on the feature
+branch without affecting main, then merge when ready.
+"""),
+        ("Switching Between Accounts", """
+You can also switch between different user accounts:
+
+bit switch work-account    # Switch to your work GitHub account
+bit switch personal        # Switch to personal account
+
+This automatically updates git configuration for the current repository.
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_history():
+    """Tutorial for viewing history and listings."""
+    print_success("\n📋 History & Listing - Understand Your Project")
+    print("="*80)
+    
+    sections = [
+        ("The List Command", """
+The 'bit list' command is your window into the project:
+
+bit list              # Interactive menu to choose what to list
+bit list saves        # Show recent commits/saves
+bit list branches     # Show all branches
+bit list history      # Show your recent actions
+bit list accounts     # Show configured user accounts
+"""),
+        ("Understanding History", """
+BetterGit tracks two types of history:
+
+1. Git History: Your saves (commits) and their messages
+2. Action History: Commands you've run (save, switch, push, etc.)
+
+Both help you understand what happened and when.
+"""),
+        ("Reading Save History", """
+When you run 'bit list saves', you see:
+
+1. abc123: "Fix login bug" by John (2h ago)
+2. def456: "Add user registration" by John (1d ago)
+
+Each line shows:
+• Commit hash (abc123) - unique identifier
+• Message ("Fix login bug") - what changed
+• Author (John) - who made the change
+• Time (2h ago) - when it was made
+"""),
+        ("Action History", """
+Action history shows what commands you've run:
+
+bit list history         # Recent actions
+bit list history -n 20   # Show 20 recent actions
+bit list history -d      # Include detailed timestamps
+
+This is helpful for:
+• Remembering what you did
+• Understanding how you got to current state
+• Finding actions to undo
+"""),
+        ("Branch Overview", """
+'bit list branches' shows:
+
+✅ main (current)       # Current branch with checkmark
+   feature-login        # Other local branches
+   origin/develop       # Remote branches
+
+The checkmark shows which branch you're currently on.
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_remotes():
+    """Tutorial for working with remote repositories."""
+    print_success("\n🌐 Remote Repositories - Collaborate and Backup")
+    print("="*80)
+    
+    sections = [
+        ("What are Remotes?", """
+Remotes are copies of your repository stored elsewhere:
+• GitHub, GitLab, Bitbucket (online platforms)
+• Another computer or server
+• Cloud storage with git support
+
+They enable:
+• Collaboration with others
+• Backup of your work
+• Access from multiple devices
+"""),
+        ("Basic Remote Operations", """
+Essential remote commands:
+
+bit push              # Send your saves to remote
+bit pull              # Get updates from remote
+bit clone <url>       # Copy a remote repository
+bit sync              # Push and pull in one command
+
+Always pull before pushing to avoid conflicts!
+"""),
+        ("The Clone Command", """
+BetterGit's clone is super smart:
+
+bit clone                    # Interactive selection from your GitHub repos
+bit clone <url>              # Clone specific repository
+bit clone user/repo          # Clone GitHub repo by name
+
+Features:
+• Detects clipboard URLs automatically
+• Lists your GitHub repositories
+• Opens project in your editor after cloning
+"""),
+        ("Setting Up Remotes", """
+When you create a new project:
+
+bit init my-project    # Create local repository
+# BetterGit asks if you want to create remote repository
+# If yes, it creates GitHub repo and connects it automatically
+
+For existing projects:
+# You can manually add remotes through git commands
+# or recreate with remote using bit init
+"""),
+        ("Collaboration Workflow", """
+Typical collaboration flow:
+
+1. bit clone <url>           # Get the project
+2. bit switch new-feature -c # Create feature branch
+3. # Make your changes
+4. bit save "add feature"    # Save your work
+5. bit push                  # Share with team
+6. # Create pull request on GitHub
+7. # After merge, switch back to main
+8. bit pull                  # Get latest updates
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_undo():
+    """Tutorial for undoing changes and fixing mistakes."""
+    print_success("\n↩️ Undoing Changes - Fix Mistakes Like a Pro")
+    print("="*80)
+    
+    sections = [
+        ("Why Undo Matters", """
+Everyone makes mistakes! BetterGit makes fixing them easy:
+• Undo the last action you took
+• Undo specific commits from the past
+• Delete unwanted branches
+• Interactive selection of what to undo
+• Safe operations with confirmation prompts
+"""),
+        ("Basic Undo", """
+Simple undo operations:
+
+bit undo              # Undo the last action
+bit undo -i           # Interactive menu to choose what to undo
+bit undo abc123       # Undo specific commit by hash
+bit undo feature-branch # Delete specific branch
+
+The most recent action is always the easiest to undo.
+"""),
+        ("Interactive Undo", """
+'bit undo -i' shows you recent actions:
+
+1. SAVE: "Fix login bug" (2h ago)
+2. SWITCH: main → feature-login (3h ago)
+3. PUSH: to main (1d ago)
+
+Select any action to undo. BetterGit will undo that action
+and all actions after it (like rewinding a tape).
+"""),
+        ("Targeted Undo", """
+Undo specific things:
+
+bit undo abc123         # Undo specific commit
+• If it's the latest commit: moves changes to staging
+• If it's older: offers revert commit or interactive rebase
+
+bit undo feature-branch # Delete specific branch
+• Confirms before deletion
+• Asks about remote branch too
+• Protects main/master branches
+"""),
+        ("Undo Safety Features", """
+BetterGit protects you from dangerous operations:
+
+⚠️  Confirms destructive actions
+⚠️  Shows what will be affected
+⚠️  Prevents deleting current branch
+⚠️  Warns about protected branches (main, master)
+⚠️  Explains consequences of actions
+
+Always read the prompts carefully!
+"""),
+        ("What Can't Be Undone", """
+Some things are permanent:
+❌ Forced pushes to remote (affects others)
+❌ Deleted files not tracked by git
+❌ Actions outside of BetterGit
+❌ Manual git commands (not logged in history)
+
+That's why BetterGit encourages using its commands - they're trackable!
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
+def _tutorial_advanced():
+    """Tutorial for advanced features and workflows."""
+    print_success("\n⚡ Advanced Features - Power User Tips")
+    print("="*80)
+    
+    sections = [
+        ("Stashing Changes", """
+Stash lets you temporarily save uncommitted changes:
+
+bit stash "work in progress"  # Save current changes temporarily
+bit stash                     # Quick stash without message
+
+Useful when you need to:
+• Switch branches but aren't ready to commit
+• Pull updates without committing current work
+• Try a different approach while preserving current work
+"""),
+        ("Multiple Accounts", """
+Manage different identities:
+
+# Set up accounts in config
+work-account:
+  name: "John Smith"
+  email: "john@company.com"
+
+personal:
+  name: "John"
+  email: "john@personal.com"
+
+# Switch between them
+bit switch work-account    # Use work identity
+bit switch personal        # Use personal identity
+"""),
+        ("Force Operations", """
+Sometimes you need more power:
+
+bit push -f               # Force push (dangerous!)
+bit undo branch-name      # Force delete branch
+
+These operations bypass safety checks. Use with extreme caution!
+"""),
+        ("Pull Request Workflow", """
+Advanced GitHub integration:
+
+bit pr create -t "Fix bug" -b "Fixes login issue"
+bit pr list              # See all pull requests
+bit pr checkout 42       # Check out PR #42 locally
+
+Streamlines code review process.
+"""),
+        ("Repository Maintenance", """
+Keep your repository healthy:
+
+bit cleanup              # Clean up old branches and refs
+bit sync                 # Synchronize with remote
+bit graph                # Visualize commit history
+
+Regular maintenance prevents issues.
+"""),
+        ("Configuration Tips", """
+Customize BetterGit behavior:
+
+# Set default editor
+default_editor: "code"
+
+# Set default branch name
+main_branch_name: "main"
+
+# Set default repository visibility
+repo_visibility: "private"
+
+Edit config with: bit config edit
+"""),
+        ("Debugging Issues", """
+When things go wrong:
+
+bit status               # Always start here
+bit list history         # See what you did recently
+bit --verbose <command>  # Get detailed output
+bit tutorial -t undo     # Learn how to fix mistakes
+
+Most issues can be resolved with undo operations!
+""")
+    ]
+    
+    for title, content in sections:
+        print(f"\n📖 {title}")
+        print("-" * 60)
+        print(content.strip())
+        if not confirm("\nContinue to next section?", default=True):
+            break
+
+
 if __name__ == '__main__':
     main()
