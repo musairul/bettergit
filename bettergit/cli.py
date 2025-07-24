@@ -1257,30 +1257,28 @@ def history(limit: int):
             print_info("No actions in history.")
             return
         
-        headers = ["#", "When", "Action", "Details"]
-        rows = []
+        # Use the same formatting as interactive undo
+        from datetime import datetime
         
-        for action in actions[-limit:]:
-            action_id = str(action['id'])
+        print(f"\n{SYMBOLS['clipboard']} Action History:")
+        print("=" * 80)
+        
+        # Get recent actions (most recent first, like undo)
+        recent_actions = list(reversed(actions))[:limit]
+        
+        for i, action in enumerate(recent_actions):
+            action_type = action['action_type']
             
-            # Make timestamp more human readable
+            # Calculate relative time (same logic as interactive undo)
             timestamp_str = action['timestamp'][:19].replace('T', ' ')
-            # Convert to more friendly format like "2 hours ago" if recent
-            from datetime import datetime, timezone
             try:
-                # Parse the timestamp - assume it's in local time since that's how it's stored
                 action_time = datetime.fromisoformat(timestamp_str)
-                
-                # Get current local time for comparison
                 now = datetime.now()
-                
-                # Calculate the difference
                 diff = now - action_time
                 total_seconds = diff.total_seconds()
                 
-                # Format based on time difference
                 if diff.days > 7:
-                    time_str = timestamp_str.split(' ')[0]  # Just the date for old entries
+                    time_str = timestamp_str.split(' ')[0]
                 elif diff.days > 0:
                     time_str = f"{diff.days}d ago"
                 elif total_seconds > 3600:
@@ -1289,29 +1287,16 @@ def history(limit: int):
                 elif total_seconds > 60:
                     minutes = int(total_seconds // 60)
                     time_str = f"{minutes}m ago"
-                elif total_seconds > 0:
-                    time_str = "just now"
                 else:
-                    # Future timestamp or same time
                     time_str = "just now"
-            except Exception as e:
-                # Fallback to original timestamp if parsing fails
+            except:
                 time_str = timestamp_str
             
-            action_type = action['action_type']
-            
-            # Format details in a more human-readable way
+            # Format details (same logic as interactive undo)
             details_dict = action.get('details', {})
             if action_type == 'save':
                 message = details_dict.get('message', '')
-                files = details_dict.get('files', [])
-                if files and files != ['.']:
-                    file_list = ', '.join(files[:3])
-                    if len(files) > 3:
-                        file_list += f" (+{len(files)-3} more)"
-                    details = f'"{message}" ({file_list})'
-                else:
-                    details = f'"{message}"'
+                details = f'"{message}"'
             elif action_type == 'switch':
                 from_branch = details_dict.get('from_branch', '')
                 to_branch = details_dict.get('to_branch', '')
@@ -1335,12 +1320,13 @@ def history(limit: int):
                 project_name = details_dict.get('project_name', '')
                 details = f"project: {project_name}"
             else:
-                # Fallback for other action types
                 details = str(details_dict)[:50]
             
-            rows.append([action_id, time_str, action_type, details])
+            # Display in the same format as interactive undo
+            choice_text = f"{action_type.upper()}: {details} ({time_str})"
+            print(f"  {i+1:2d}. {choice_text}")
         
-        display_table(f"{SYMBOLS['clipboard']} Action History", headers, rows)
+        print("=" * 80)
         
     except HistoryError as e:
         print_error(f"Failed to get history: {e}")
