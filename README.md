@@ -5,20 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-## 🎯 The Problem with Traditional Git
+BetterGit transforms the Git experience with intuitive commands, interactive menus, and human-readable output. Say goodbye to cryptic Git commands and hello to a version control system that actually makes sense.
 
-Git is powerful but painful. Every command requires memorizing cryptic flags, you constantly need to look up syntax, and one wrong move can destroy hours of work.
-
-## 🚀 BetterGit's Revolutionary Approach
-
-**Every command is interactive** - Never guess what to do again. Just type the command by itself:
-
-```bash
-bit switch                         # Interactive menu: branches, commits, accounts
-bit list                          # Choose: saves, branches, history, accounts  
-bit undo -i                          # Smart menu: undo commits, delete branches, fix ANY mistake
-bit clone                         # Your repos + clipboard detection + auto-setup
-```
+## 🎯 Why BetterGit? See The Difference
 
 **One command, multiple superpowers:**
 
@@ -46,6 +35,17 @@ bit workon 123                     # → Auto-creates descriptive branch
 bit clone                         # → Shows YOUR repos with descriptions
                                   # → Detects GitHub URL in clipboard
                                   # → Auto-opens in editor after clone
+```
+
+**Every command is interactive** 
+
+Never guess what to do again. Just type the command by itself
+
+```bash
+bit switch                         # Interactive menu: branches, commits, accounts
+bit list                          # Choose: saves, branches, history, accounts  
+bit undo -i                          # Smart menu: undo commits, delete branches, fix ANY mistake
+bit clone                         # Your repos + clipboard detection + auto-setup
 ```
 
 ## 🎯 Core Superpowers
