@@ -9,7 +9,7 @@ BetterGit reimagines the Git user experience to be more intuitive, safe, and pow
 ## Features
 
 - **Intuitive Commands**: Use `bit save` instead of `git commit`, with smart defaults and interactive modes
-- **Safety First**: Comprehensive undo system, automatic stashing, and confirmation prompts for dangerous operations
+- **Safety First**: Comprehensive undo system and confirmation prompts for dangerous operations
 - **Modern Workflows**: Built-in support for pull requests, issue tracking, and team collaboration
 - **Secure Credentials**: Native OS credential storage - no more plain text tokens
 - **Smart Automation**: Automatic conflict detection, intelligent branch switching, and streamlined sync operations
@@ -112,9 +112,6 @@ BetterGit never stores passwords or tokens in plain text. Instead, it uses your 
 When you first use a command that requires authentication, BetterGit will prompt for your token and store it securely.
 
 ## Safety Features
-
-### Automatic Stashing
-BetterGit automatically stashes uncommitted changes when performing operations like `switch` or `pull`, then restores them afterward.
 
 ### Undo System
 Every state-changing action is logged and can be undone:

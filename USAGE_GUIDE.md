@@ -59,7 +59,6 @@ bit undo
 ## 🛡️ **Safety Features**
 
 ### **Automatic Protection**
-- **Auto-stashing**: Automatically stashes changes during risky operations
 - **Undo system**: Every action can be undone with `bit undo`
 - **Confirmation prompts**: Dangerous operations require confirmation
 - **Dry-run mode**: Preview changes with `--dry-run` flag
@@ -147,7 +146,7 @@ bit switch account@domain.com
 ## 🎯 **Key Benefits**
 
 1. **✅ No Conflicts**: Uses `bit` command, so your existing `git` commands still work
-2. **🛡️ Safer**: Automatic stashing, undo system, confirmation prompts
+2. **🛡️ Safer**: Undo system, confirmation prompts
 3. **🚀 Faster**: Single commands for complex operations (`bit sync`)
 4. **🎨 Cleaner**: Beautiful, readable output with proper formatting
 5. **🔒 Secure**: Never stores credentials in plain text

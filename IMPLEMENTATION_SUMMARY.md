@@ -42,7 +42,7 @@ better-git/
 - **`bit save "message"`** - Smart commit with interactive file selection
 - **`bit switch [target]`** - Intelligent switching between branches, commits, or accounts
 - **`bit status`** - Clean, formatted repository status
-- **`bit push/pull`** - Standard operations with auto-stashing
+- **`bit push/pull`** - Standard operations
 - **`bit stash [message]`** - Manual stashing with optional message
 
 ### Information & History
@@ -54,11 +54,10 @@ better-git/
 ### Advanced Workflow
 - **`bit pr create/list/checkout`** - Pull request management
 - **`bit workon [issue-id]`** - Start working on issues (creates branch automatically)
-- **`bit sync`** - Full synchronization (stash, pull, rebase, push, unstash)
+- **`bit sync`** - Full synchronization (pull, rebase, push)
 - **`bit cleanup`** - Repository housekeeping with dry-run mode
 
 ### Safety & Security Features
-- **Automatic Stashing** - Prevents conflicts during operations
 - **Comprehensive Undo System** - Track and reverse state-changing actions
 - **Secure Credential Storage** - Uses OS native credential managers
 - **Confirmation Prompts** - Varying levels of protection for dangerous operations

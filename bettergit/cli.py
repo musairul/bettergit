@@ -509,28 +509,12 @@ def _identify_switch_target(target: str) -> str:
 
 
 def _switch_branch(branch_name: str):
-    """Switch to a branch, handling uncommitted changes automatically."""
+    """Switch to a branch."""
     try:
-        # Auto-stash if there are uncommitted changes
-        stash_created = False
-        if has_uncommitted_changes():
-            print_info("Stashing uncommitted changes...")
-            run_git_command(['stash', 'push', '-m', f'Auto-stash before switching to {branch_name}'])
-            stash_created = True
-        
         # Switch to the branch
         current_branch = get_current_branch()
         run_git_command(['switch', branch_name])
         print_success(f"Switched to branch '{branch_name}'")
-        
-        # Try to unstash if we created a stash
-        if stash_created:
-            try:
-                run_git_command(['stash', 'pop'])
-                print_info("Restored stashed changes")
-            except GitError:
-                print_warning("Could not automatically restore stashed changes. "
-                             "Use 'git stash pop' manually if needed.")
         
         # Log the action
         history_manager.log_action(
@@ -644,13 +628,6 @@ def pull(rebase: bool):
             print_error("Cannot pull in detached HEAD state.")
             return
         
-        # Auto-stash if there are uncommitted changes
-        stash_created = False
-        if has_uncommitted_changes():
-            print_info("Stashing uncommitted changes...")
-            run_git_command(['stash', 'push', '-m', 'Auto-stash before pull'])
-            stash_created = True
-        
         # Pull with optional rebase
         if rebase:
             run_git_command(['pull', '--rebase'])
@@ -658,15 +635,6 @@ def pull(rebase: bool):
             run_git_command(['pull'])
         
         print_success("Pulled changes from remote")
-        
-        # Try to unstash if we created a stash
-        if stash_created:
-            try:
-                run_git_command(['stash', 'pop'])
-                print_info("Restored stashed changes")
-            except GitError:
-                print_warning("Could not automatically restore stashed changes. "
-                             "Use 'git stash pop' manually if needed.")
         
         # Log the action
         history_manager.log_action(
@@ -1002,40 +970,21 @@ def sync():
         
         print_info("Starting sync operation...")
         
-        # Step 1: Stash uncommitted changes
-        stash_created = False
-        if has_uncommitted_changes():
-            print_info("Stashing uncommitted changes...")
-            run_git_command(['stash', 'push', '-m', 'Auto-stash during sync'])
-            stash_created = True
-        
-        # Step 2: Pull with rebase
+        # Step 1: Pull with rebase
         print_info("Pulling latest changes...")
         try:
             run_git_command(['pull', '--rebase'])
         except GitError as e:
             print_error(f"Pull failed: {e}")
-            if stash_created:
-                print_info("Restoring stashed changes...")
-                run_git_command(['stash', 'pop'])
             return
         
-        # Step 3: Push changes
+        # Step 2: Push changes
         print_info("Pushing changes...")
         try:
             run_git_command(['push'])
         except GitError as e:
             print_warning(f"Push failed: {e}")
             print_info("This is normal if you have no local commits to push.")
-        
-        # Step 4: Restore stashed changes
-        if stash_created:
-            print_info("Restoring stashed changes...")
-            try:
-                run_git_command(['stash', 'pop'])
-            except GitError:
-                print_warning("Could not automatically restore stashed changes. "
-                             "Use 'git stash pop' manually.")
         
         print_success("Sync completed successfully!")
         

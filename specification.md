@@ -78,13 +78,9 @@ Combines branches with an intuitive `source -> destination` syntax and an intera
 
 ### `git stash`
 
-Manually saves uncommitted changes to a temporary area. This provides explicit control when the automatic stashing behavior is not desired.
+Manually saves uncommitted changes to a temporary area.
 
 ### 4. Smart Features
-
-### Automatic Stashing
-
-To prevent errors, BetterGit automatically stashes and unstashes local changes when performing operations like `git switch` or `git pull` that could be blocked by an unclean working directory.
 
 ### 5. Safety & Recovery Commands
 
