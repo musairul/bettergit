@@ -173,3 +173,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - 📖 [Documentation](https://docs.bettergit.dev)
 - 🐛 [Bug Reports](https://github.com/bettergit/bettergit/issues)
 - 💬 [Discussions](https://github.com/bettergit/bettergit/discussions)
+# Test change

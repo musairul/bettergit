@@ -282,19 +282,19 @@ def display_status_summary(status: Dict[str, Any]):
             state = status['repo_state']
             if state == "MERGING":
                 content.append(f"[bold red]{SYMBOLS['warning']} You are in the middle of a merge[/bold red]")
-                content.append("  (fix conflicts and run 'bit save' to conclude merge)")
+                content.append("  (fix conflicts and run '[yellow]bit save[/yellow]' to conclude merge)")
             elif state == "REBASING":
                 content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a rebase[/bold yellow]")
-                content.append("  (fix conflicts and run 'git rebase --continue')")
+                content.append("  (fix conflicts and run '[yellow]git rebase --continue[/yellow]')")
             elif state == "CHERRY-PICKING":
                 content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a cherry-pick[/bold yellow]")
-                content.append("  (fix conflicts and run 'git cherry-pick --continue')")
+                content.append("  (fix conflicts and run '[yellow]git cherry-pick --continue[/yellow]')")
             elif state == "REVERTING":
                 content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a revert[/bold yellow]")
-                content.append("  (fix conflicts and run 'git revert --continue')")
+                content.append("  (fix conflicts and run '[yellow]git revert --continue[/yellow]')")
             elif state == "BISECTING":
                 content.append(f"[bold cyan]{SYMBOLS['info']} You are in the middle of a bisect[/bold cyan]")
-                content.append("  (run 'git bisect good/bad' to continue)")
+                content.append("  (run '[yellow]git bisect good/bad[/yellow]' to continue)")
             content.append("")
         
         # Branch information
@@ -314,15 +314,15 @@ def display_status_summary(status: Dict[str, Any]):
                     content.append(branch_line)
                     content.append(f"  Your branch and '{remote}' have diverged,")
                     content.append(f"  and have {ahead} and {behind} different commits each, respectively.")
-                    content.append("  (use 'bit pull' to merge the remote branch into yours)")
+                    content.append("  (use '[yellow]bit pull[/yellow]' to merge the remote branch into yours)")
                 elif ahead > 0:
                     content.append(branch_line)
                     content.append(f"  Your branch is ahead of '{remote}' by {ahead} commit{'s' if ahead != 1 else ''}.")
-                    content.append("  (use 'bit push' to publish your local commits)")
+                    content.append("  (use '[yellow]bit push[/yellow]' to publish your local commits)")
                 elif behind > 0:
                     content.append(branch_line)
                     content.append(f"  Your branch is behind '{remote}' by {behind} commit{'s' if behind != 1 else ''}.")
-                    content.append("  (use 'bit pull' to update your local branch)")
+                    content.append("  (use '[yellow]bit pull[/yellow]' to update your local branch)")
                 else:
                     content.append(branch_line)
                     content.append(f"  Your branch is up to date with '{remote}'.")
@@ -341,11 +341,11 @@ def display_status_summary(status: Dict[str, Any]):
         if status.get('merge_conflicts'):
             conflicts = status['merge_conflicts']
             content.append(f"[bold red]{SYMBOLS['error']} You have unmerged paths.[/bold red]")
-            content.append("  (fix conflicts and run 'bit save')")
-            content.append("  (use 'bit save --abort' to abort the merge)")
+            content.append("  (fix conflicts and run '[yellow]bit save[/yellow]')")
+            content.append("  (use '[yellow]bit save --abort[/yellow]' to abort the merge)")
             content.append("")
             content.append(f"[bold red]Unmerged paths:[/bold red]")
-            content.append("  (use 'git add <file>...' to mark resolution)")
+            content.append("  (use '[yellow]git add <file>...[/yellow]' to mark resolution)")
             for file in conflicts[:10]:  # Limit display to first 10
                 content.append(f"    [red]both modified:   {file}[/red]")
             if len(conflicts) > 10:
@@ -367,7 +367,7 @@ def display_status_summary(status: Dict[str, Any]):
         
         if staged_files:
             content.append(f"[bold green]Changes to be committed:[/bold green]")
-            content.append("  (use 'bit undo' to unstage)")
+            content.append("  (use '[yellow]bit undo[/yellow]' to unstage)")
             for file, change_type in staged_files[:15]:  # Limit display
                 if change_type == 'renamed':
                     content.append(f"    [green]renamed:    {file}[/green]")
@@ -387,8 +387,8 @@ def display_status_summary(status: Dict[str, Any]):
         if status.get('modified'):
             modified = status['modified']
             content.append(f"[bold red]Changes not staged for commit:[/bold red]")
-            content.append("  (use 'bit save' to stage and commit)")
-            content.append("  (use 'git checkout -- <file>...' to discard changes)")
+            content.append("  (use '[yellow]bit save[/yellow]' to stage and commit)")
+            content.append("  (use '[yellow]git checkout -- <file>...[/yellow]' to discard changes)")
             for file in modified[:15]:  # Limit display
                 content.append(f"    [red]modified:   {file}[/red]")
             if len(modified) > 15:
@@ -399,7 +399,7 @@ def display_status_summary(status: Dict[str, Any]):
         if status.get('untracked'):
             untracked = status['untracked']
             content.append(f"[bold red]Untracked files:[/bold red]")
-            content.append("  (use 'bit save' to include in what will be committed)")
+            content.append("  (use '[yellow]bit save[/yellow]' to include in what will be committed)")
             for file in untracked[:15]:  # Limit display
                 content.append(f"    [red]{file}[/red]")
             if len(untracked) > 15:
@@ -410,7 +410,7 @@ def display_status_summary(status: Dict[str, Any]):
         if status.get('stash_count', 0) > 0:
             stash_count = status['stash_count']
             content.append(f"{SYMBOLS['stash']} You have {stash_count} stash{'es' if stash_count != 1 else ''}")
-            content.append("  (use 'bit list stashes' to see them)")
+            content.append("  (use '[yellow]bit list stashes[/yellow]' to see them)")
             content.append("")
         
         # Clean working directory message
