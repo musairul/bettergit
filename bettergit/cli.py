@@ -103,10 +103,14 @@ def _create_remote_repository():
         # Get current account configuration
         current_account = config_manager.get_current_account()
         
-        # Get or prompt for token
+        # Check if SSH keys are available and preferred
+        use_ssh = _check_ssh_key_availability()
+        
+        # Get or prompt for token (still needed for API calls to create repo)
         token = config_manager.get_credential(current_account)
         if not token:
             print_info(f"No stored credential found for account '{current_account}'")
+            print_info("GitHub token is needed to create the remote repository via API")
             token = prompt_password(f"Enter GitHub token for {current_account}: ")
             if token:
                 config_manager.store_credential(current_account, token)
@@ -125,22 +129,57 @@ def _create_remote_repository():
         defaults = config_manager.config.get('defaults', {})
         default_visibility = defaults.get('repo_visibility', 'private')
         is_private = default_visibility == 'private'
-        
-        if not confirm(f"Create {'private' if is_private else 'public'} repository '{repo_name}'?"):
-            return
-        
+
         # Create the repository
-        print_info("Creating remote repository...")
+        print_info(f"Creating {'private' if is_private else 'public'} remote repository '{repo_name}'...")
         repo_data = github.create_repository(repo_name, description, is_private)
-        clone_url = repo_data['clone_url']
+        
+        # Choose the appropriate clone URL based on SSH availability
+        if use_ssh:
+            # Use SSH URL format: git@github.com:username/repo.git
+            clone_url = repo_data.get('ssh_url') or f"git@github.com:{repo_data['full_name']}.git"
+            print_info("Using SSH for repository connection")
+        else:
+            # Use HTTPS URL
+            clone_url = repo_data['clone_url']
+            print_info("Using HTTPS for repository connection")
         
         # Add remote and push
         run_git_command(['remote', 'add', 'origin', clone_url])
         
-        # Create initial commit if needed
-        if not has_uncommitted_changes():
-            run_git_command(['add', '.'])
-            run_git_command(['commit', '-m', 'Initial commit'])
+        # Create initial commit if repository is empty
+        try:
+            # Check if there are any commits at all
+            run_git_command(['rev-parse', 'HEAD'])
+            has_commits = True
+        except GitError:
+            # No commits exist yet
+            has_commits = False
+        
+        if not has_commits:
+            # Repository is empty, create initial commit
+            # First check if there are any files to commit
+            try:
+                status_output, _, _ = run_git_command(['status', '--porcelain'])
+                if status_output.strip():
+                    # There are files to commit
+                    run_git_command(['add', '.'])
+                    run_git_command(['commit', '-m', 'Initial commit'])
+                    print_info("Created initial commit")
+                else:
+                    # No files to commit, create a basic README
+                    readme_path = Path("README.md")
+                    if not readme_path.exists():
+                        project_title = Path.cwd().name
+                        readme_content = f"# {project_title}\n\nA new project created with BetterGit.\n"
+                        readme_path.write_text(readme_content, encoding='utf-8')
+                    
+                    run_git_command(['add', '.'])
+                    run_git_command(['commit', '-m', 'Initial commit'])
+                    print_info("Created initial commit with README.md")
+            except GitError as e:
+                print_error(f"Failed to create initial commit: {e}")
+                return
         
         # Push to remote
         main_branch = defaults.get('main_branch_name', 'main')
@@ -148,11 +187,51 @@ def _create_remote_repository():
         run_git_command(['push', '-u', 'origin', main_branch])
         
         print_success(f"Created remote repository: {repo_data['html_url']}")
+        if use_ssh:
+            print_info("🔑 Repository configured to use SSH keys for authentication")
         
     except IntegrationError as e:
         print_error(f"Failed to create remote repository: {e}")
     except GitError as e:
         print_error(f"Git operation failed: {e}")
+
+
+def _check_ssh_key_availability() -> bool:
+    """Check if SSH keys are available and can be used for GitHub."""
+    try:
+        import os
+        import subprocess
+        from pathlib import Path
+        
+        # Check for common SSH key locations
+        ssh_dir = Path.home() / '.ssh'
+        if not ssh_dir.exists():
+            return False
+        
+        # Look for common SSH key files
+        key_files = [
+            'id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa',
+            'github_rsa', 'github_ed25519'
+        ]
+        
+        found_keys = []
+        for key_file in key_files:
+            key_path = ssh_dir / key_file
+            if key_path.exists():
+                found_keys.append(key_path)
+        
+        if not found_keys:
+            return False
+        
+        # Simple check - if keys exist, assume they work
+        # The SSH test was causing hangs, so we'll be optimistic
+        # Git operations will fail gracefully if SSH doesn't work
+        return True
+        
+    except Exception as e:
+        # If anything fails, fall back to HTTPS
+        logger.debug(f"SSH key check failed: {e}")
+        return False
 
 
 @main.command('save')
@@ -1784,7 +1863,17 @@ def _interactive_clone():
         for repo in repo_list:
             repo_name = repo.get('name', 'Unknown')
             description = repo.get('description', 'No description')
-            clone_url = repo.get('clone_url', repo.get('ssh_url', ''))
+            
+            # Prefer SSH URL if available, fall back to HTTPS
+            ssh_url = repo.get('ssh_url', '')
+            https_url = repo.get('clone_url', '')
+            
+            # Choose URL based on SSH key availability
+            if _check_ssh_key_availability() and ssh_url:
+                clone_url = ssh_url
+            else:
+                clone_url = https_url
+                
             visibility = "🔒 Private" if repo.get('private', False) else "🌐 Public"
             
             display_text = f"{visibility} {repo_name} - {description[:50]}"
@@ -1913,6 +2002,9 @@ def _get_user_repositories() -> List[Dict[str, Any]]:
 def _perform_clone(repository_url: str):
     """Perform the actual git clone operation."""
     try:
+        # Convert HTTPS GitHub URLs to SSH if SSH keys are available
+        final_url = _convert_to_ssh_if_available(repository_url)
+        
         # Extract repository name from URL for directory name
         import re
         
@@ -1936,10 +2028,13 @@ def _perform_clone(repository_url: str):
         if not repo_name:
             repo_name = "cloned-repo"
         
-        print_info(f"Cloning {repository_url}...")
+        if final_url != repository_url:
+            print_info(f"🔑 Using SSH for cloning: {final_url}")
+        else:
+            print_info(f"Cloning {repository_url}...")
         
         # Perform the clone
-        run_git_command(['clone', repository_url])
+        run_git_command(['clone', final_url])
         
         print_success(f"Successfully cloned repository to {repo_name}")
         
@@ -1960,6 +2055,30 @@ def _perform_clone(repository_url: str):
         print_error(f"Git clone failed: {e}")
     except Exception as e:
         print_error(f"Clone operation failed: {e}")
+
+
+def _convert_to_ssh_if_available(url: str) -> str:
+    """Convert HTTPS GitHub URL to SSH if SSH keys are available."""
+    import re
+    
+    # Only convert if SSH keys are available
+    if not _check_ssh_key_availability():
+        return url
+    
+    # Pattern to match GitHub HTTPS URLs
+    https_pattern = r'https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$'
+    match = re.match(https_pattern, url)
+    
+    if match:
+        username, repo = match.groups()
+        # Convert to SSH format, ensure .git extension
+        if not repo.endswith('.git'):
+            repo += '.git'
+        ssh_url = f"git@github.com:{username}/{repo}"
+        return ssh_url
+    
+    # Return original URL if not a GitHub HTTPS URL or already SSH
+    return url
 
 
 def _open_in_editor(directory_path: Path):
@@ -2175,15 +2294,17 @@ This creates a config file if it doesn't exist. The file location is:
 • macOS/Linux: ~/.config/bettergit/config.yml
 """),
         ("Setting Up Your Identity", """
-First, let's set up your basic identity. Add this to your config file:
+First, let's set up your basic identity. If it doesnt have it already, add this to your config file:
 
 accounts:
   personal:
     name: "Your Full Name"
     email: "you@example.com"
+    token: $GITHUB_TOKEN
   work:
     name: "Your Full Name" 
     email: "you@company.com"
+    token: $GITHUB_TOKEN
 
 current_account: "personal"
 
@@ -2207,21 +2328,27 @@ To work with GitHub repositories, you need a Personal Access Token.
 
 💾 BetterGit will help you store this securely in the next step.
 """),
-        ("SSH Keys (Optional)", """
-SSH keys provide an alternative to tokens for Git operations:
+        ("SSH Keys (Recommended)", """
+SSH keys provide the best authentication method for Git operations:
 
 🔐 Why use SSH keys?
 • More secure than HTTPS + token
 • No expiration (unless you set one)
-• Automatically used by Git once set up
+• Automatically detected and used by BetterGit
+• No need to enter credentials for Git operations
 
 🛠️  Setup SSH Keys:
 1. Generate key: ssh-keygen -t ed25519 -C "your@email.com"
 2. Add to GitHub: https://github.com/settings/ssh
-3. Copy public key: cat ~/.ssh/id_ed25519.pub
+3. Copy public key: cat ~/.ssh/id_ed25519.pub (Linux/Mac) or type ~/.ssh/id_ed25519.pub (Windows)
 
-💡 BetterGit works with both HTTPS (token) and SSH keys.
-   We recommend starting with tokens - they're easier to set up!
+✨ BetterGit will automatically detect your SSH keys and use them when:
+   • Creating new repositories
+   • Cloning repositories 
+   • All Git operations (push, pull, etc.)
+
+💡 You still need a token for GitHub API operations (creating repos, PRs).
+   But Git operations will use your SSH key automatically!
 """),
         ("Default Settings", """
 Customize BetterGit behavior with default settings:
