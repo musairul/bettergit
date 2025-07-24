@@ -316,10 +316,10 @@ def _select_files_to_stage():
         return []
 
 
-@main.command()
+@main.command('list')
 @click.argument('list_type', required=False, 
                 type=click.Choice(['branches', 'saves', 'remotes', 'accounts', 'stashes']))
-def list(list_type: Optional[str]):
+def list_command(list_type: Optional[str]):
     """List repository components (branches, saves, remotes, accounts, stashes)."""
     try:
         if not list_type:
