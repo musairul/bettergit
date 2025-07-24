@@ -5,7 +5,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
+
 BetterGit transforms the Git experience with intuitive commands, interactive menus, and human-readable output. Say goodbye to cryptic Git commands and hello to a version control system that actually makes sense.
+
+
+
 
 ## 🎯 Why BetterGit? See The Difference
 
@@ -355,18 +359,21 @@ bit pr create
 # Clone and setup
 git clone https://github.com/musairul/bettergit.git && cd bettergit
 pip install -r requirements.txt
+pip install -e .
 
-# Your first magical experience
-python -m bettergit.cli switch    # See the interactive magic!
+bit tutorial    # Experience the magic!
 ```
+
+### ⚠️ BetterGit is in beta so there will be bugs!
+
+Please report any bugs you may find using the links below.
 
 ---
 
-Made with ❤️ for developers who want Git to be simple and powerful.
 
-*Star ⭐ this repository if BetterGit helped you!*
 
-## 📜 License
+
+###  📜 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
@@ -376,7 +383,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **[⭐ Star this project](https://github.com/musairul/bettergit)** • **[🐛 Report Bug](https://github.com/musairul/bettergit/issues)** • **[💡 Request Feature](https://github.com/musairul/bettergit/issues)**
 
-Made with ❤️ by developers, for developers
+Made with ❤️ for developers who want Git to be simple and powerful. 
+
+Star ⭐ this repository if BetterGit helped you!
 
 *Transform your Git workflow today*
 
