@@ -2439,12 +2439,8 @@ def _interactive_token_setup():
         # Store the token
         config_manager.store_credential(current_account, token)
         
-        # Set environment variable for this session
-        _set_environment_variable('GITHUB_TOKEN', token)
-        
         print_success("✅ Token saved successfully!")
-        print_info("� Token is stored securely in BetterGit's credential store")
-        print_info("🌍 Environment variable GITHUB_TOKEN set for this session")
+        print_info("🔒 Token is stored securely in BetterGit's credential store")
         
         # Test the token
         if confirm("\n🧪 Test the token now?", default=True):
@@ -2457,55 +2453,6 @@ def _interactive_token_setup():
     except Exception as e:
         print_error(f"Failed to set up token: {e}")
         print_info("💡 You can try again later with: bit tutorial -t config")
-
-
-def _set_environment_variable(name: str, value: str):
-    """Set environment variable for current session and provide instructions for persistence."""
-    try:
-        import os
-        import platform
-        
-        # Set for current Python session
-        os.environ[name] = value
-        
-        system = platform.system()
-        
-        if system == "Windows":
-            print_info(f"💾 Setting {name} for Windows...")
-            try:
-                import subprocess
-                # Try to use setx for persistent setting
-                result = subprocess.run(['setx', name, value], 
-                                      capture_output=True, text=True)
-                if result.returncode == 0:
-                    print_success(f"✅ {name} will be available in new terminal sessions")
-                else:
-                    print_warning(f"⚠️  Could not set persistent variable. Manual setup needed.")
-                    print_info(f"To set manually: setx {name} \"{value}\"")
-            except Exception:
-                print_warning("Could not set persistent environment variable")
-                print_info(f"💡 To set manually in PowerShell:")
-                print(f"    setx {name} \"{value}\"")
-                
-        else:
-            # For Unix systems, provide instructions
-            shell = os.environ.get('SHELL', '/bin/bash')
-            shell_name = shell.split('/')[-1]
-            
-            config_files = {
-                'bash': ['~/.bashrc', '~/.bash_profile'],
-                'zsh': ['~/.zshrc'],
-                'fish': ['~/.config/fish/config.fish']
-            }
-            
-            files = config_files.get(shell_name, ['~/.bashrc'])
-            
-            print_info(f"💡 To make {name} permanent, add this line to {files[0]}:")
-            print(f"    export {name}='{value}'")
-            
-    except Exception as e:
-        print_warning(f"Could not set environment variable: {e}")
-        print_info(f"💡 Manual setup: Set {name}='{value}' in your system")
 
 
 def _test_github_token(token: str):
