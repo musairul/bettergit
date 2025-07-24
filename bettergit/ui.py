@@ -273,33 +273,159 @@ def display_git_graph(commits: List[Dict[str, Any]]):
 
 
 def display_status_summary(status: Dict[str, Any]):
-    """Display a formatted git status summary."""
+    """Display a comprehensive git status summary similar to git status."""
     try:
-        # Create status summary
         content = []
         
+        # Repository state (merge, rebase, etc.)
+        if status.get('repo_state'):
+            state = status['repo_state']
+            if state == "MERGING":
+                content.append(f"[bold red]{SYMBOLS['warning']} You are in the middle of a merge[/bold red]")
+                content.append("  (fix conflicts and run 'bit save' to conclude merge)")
+            elif state == "REBASING":
+                content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a rebase[/bold yellow]")
+                content.append("  (fix conflicts and run 'git rebase --continue')")
+            elif state == "CHERRY-PICKING":
+                content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a cherry-pick[/bold yellow]")
+                content.append("  (fix conflicts and run 'git cherry-pick --continue')")
+            elif state == "REVERTING":
+                content.append(f"[bold yellow]{SYMBOLS['warning']} You are in the middle of a revert[/bold yellow]")
+                content.append("  (fix conflicts and run 'git revert --continue')")
+            elif state == "BISECTING":
+                content.append(f"[bold cyan]{SYMBOLS['info']} You are in the middle of a bisect[/bold cyan]")
+                content.append("  (run 'git bisect good/bad' to continue)")
+            content.append("")
+        
+        # Branch information
         if status.get('branch'):
-            content.append(f"{SYMBOLS['branch']} Branch: [bold cyan]{status['branch']}[/bold cyan]")
+            branch_line = f"{SYMBOLS['branch']} On branch [bold cyan]{status['branch']}[/bold cyan]"
+            
+            # Add remote tracking info
+            if status.get('remote_branch'):
+                remote = status['remote_branch']
+                branch_line += f" tracking [cyan]{remote}[/cyan]"
+                
+                # Add ahead/behind information
+                ahead = status.get('ahead', 0)
+                behind = status.get('behind', 0)
+                
+                if ahead > 0 and behind > 0:
+                    content.append(branch_line)
+                    content.append(f"  Your branch and '{remote}' have diverged,")
+                    content.append(f"  and have {ahead} and {behind} different commits each, respectively.")
+                    content.append("  (use 'bit pull' to merge the remote branch into yours)")
+                elif ahead > 0:
+                    content.append(branch_line)
+                    content.append(f"  Your branch is ahead of '{remote}' by {ahead} commit{'s' if ahead != 1 else ''}.")
+                    content.append("  (use 'bit push' to publish your local commits)")
+                elif behind > 0:
+                    content.append(branch_line)
+                    content.append(f"  Your branch is behind '{remote}' by {behind} commit{'s' if behind != 1 else ''}.")
+                    content.append("  (use 'bit pull' to update your local branch)")
+                else:
+                    content.append(branch_line)
+                    content.append(f"  Your branch is up to date with '{remote}'.")
+            else:
+                content.append(branch_line)
+                # Check if this branch has no upstream
+                try:
+                    from .core.git import run_git_command
+                    run_git_command(['rev-parse', '--abbrev-ref', '@{upstream}'])
+                except:
+                    content.append("  No commits yet.")
+            
+            content.append("")
         
-        if status.get('ahead'):
-            content.append(f"^ Ahead: {status['ahead']} commits")
+        # Merge conflicts
+        if status.get('merge_conflicts'):
+            conflicts = status['merge_conflicts']
+            content.append(f"[bold red]{SYMBOLS['error']} You have unmerged paths.[/bold red]")
+            content.append("  (fix conflicts and run 'bit save')")
+            content.append("  (use 'bit save --abort' to abort the merge)")
+            content.append("")
+            content.append(f"[bold red]Unmerged paths:[/bold red]")
+            content.append("  (use 'git add <file>...' to mark resolution)")
+            for file in conflicts[:10]:  # Limit display to first 10
+                content.append(f"    [red]both modified:   {file}[/red]")
+            if len(conflicts) > 10:
+                content.append(f"    ... and {len(conflicts) - 10} more files")
+            content.append("")
         
-        if status.get('behind'):
-            content.append(f"v Behind: {status['behind']} commits")
-        
+        # Changes to be committed (staged)
+        staged_files = []
         if status.get('staged'):
-            content.append(f"{SYMBOLS['staged']} Staged: {len(status['staged'])} files")
+            for item in status['staged']:
+                if isinstance(item, tuple):
+                    staged_files.append(item)
+                else:
+                    staged_files.append((item, 'modified'))
+        if status.get('renamed'):
+            staged_files.extend([(f, 'renamed') for f in status['renamed']])
+        if status.get('copied'):
+            staged_files.extend([(f, 'copied') for f in status['copied']])
         
+        if staged_files:
+            content.append(f"[bold green]Changes to be committed:[/bold green]")
+            content.append("  (use 'bit undo' to unstage)")
+            for file, change_type in staged_files[:15]:  # Limit display
+                if change_type == 'renamed':
+                    content.append(f"    [green]renamed:    {file}[/green]")
+                elif change_type == 'copied':
+                    content.append(f"    [green]copied:     {file}[/green]")
+                elif change_type == 'deleted':
+                    content.append(f"    [green]deleted:    {file}[/green]")
+                elif change_type == 'new file':
+                    content.append(f"    [green]new file:   {file}[/green]")
+                else:
+                    content.append(f"    [green]modified:   {file}[/green]")
+            if len(staged_files) > 15:
+                content.append(f"    ... and {len(staged_files) - 15} more files")
+            content.append("")
+        
+        # Changes not staged for commit (modified)
         if status.get('modified'):
-            content.append(f"{SYMBOLS['modified']} Modified: {len(status['modified'])} files")
+            modified = status['modified']
+            content.append(f"[bold red]Changes not staged for commit:[/bold red]")
+            content.append("  (use 'bit save' to stage and commit)")
+            content.append("  (use 'git checkout -- <file>...' to discard changes)")
+            for file in modified[:15]:  # Limit display
+                content.append(f"    [red]modified:   {file}[/red]")
+            if len(modified) > 15:
+                content.append(f"    ... and {len(modified) - 15} more files")
+            content.append("")
         
+        # Untracked files
         if status.get('untracked'):
-            content.append(f"{SYMBOLS['untracked']} Untracked: {len(status['untracked'])} files")
+            untracked = status['untracked']
+            content.append(f"[bold red]Untracked files:[/bold red]")
+            content.append("  (use 'bit save' to include in what will be committed)")
+            for file in untracked[:15]:  # Limit display
+                content.append(f"    [red]{file}[/red]")
+            if len(untracked) > 15:
+                content.append(f"    ... and {len(untracked) - 15} more files")
+            content.append("")
         
-        if not content:
-            content.append(f"{SYMBOLS['success']} Working directory clean")
+        # Stash information
+        if status.get('stash_count', 0) > 0:
+            stash_count = status['stash_count']
+            content.append(f"{SYMBOLS['stash']} You have {stash_count} stash{'es' if stash_count != 1 else ''}")
+            content.append("  (use 'bit list stashes' to see them)")
+            content.append("")
         
-        display_panel("\n".join(content), title="Repository Status", style="blue")
+        # Clean working directory message
+        if not any([
+            status.get('staged'), status.get('modified'), status.get('untracked'),
+            status.get('merge_conflicts'), status.get('renamed'), status.get('copied')
+        ]):
+            if status.get('ahead', 0) == 0 and status.get('behind', 0) == 0:
+                content.append(f"[bold green]{SYMBOLS['success']} Nothing to commit, working tree clean[/bold green]")
+            else:
+                content.append(f"[bold green]{SYMBOLS['success']} Working tree clean[/bold green]")
+        
+        # Display the content
+        if content:
+            print("\n".join(content))
         
     except Exception as e:
         logger.error(f"Status display failed: {e}")
