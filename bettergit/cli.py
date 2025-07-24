@@ -318,8 +318,10 @@ def _select_files_to_stage():
 
 @main.command('list')
 @click.argument('list_type', required=False, 
-                type=click.Choice(['branches', 'saves', 'remotes', 'accounts', 'stashes']))
-def list_command(list_type: Optional[str]):
+                type=click.Choice(['branches', 'saves', 'remotes', 'accounts', 'stashes', 'history']))
+@click.option('--limit', '-n', default=10, help='Number of recent actions to show (for history only)')
+@click.option('--detailed', '-d', is_flag=True, help='Show detailed timestamps (for history only)')
+def list_command(list_type: Optional[str], limit: int, detailed: bool):
     """List repository components (branches, saves, remotes, accounts, stashes)."""
     try:
         if not list_type:
@@ -332,13 +334,15 @@ def list_command(list_type: Optional[str]):
         if list_type == 'branches':
             _list_branches()
         elif list_type == 'saves':
-            _list_saves()
+            _list_saves(limit)
         elif list_type == 'remotes':
             _list_remotes()
         elif list_type == 'accounts':
             _list_accounts()
         elif list_type == 'stashes':
             _list_stashes()
+        elif list_type == 'history':
+            _list_history(limit, detailed)
             
     except (GitError, ConfigError) as e:
         print_error(f"Failed to list {list_type}: {e}")
@@ -381,25 +385,57 @@ def _list_saves(limit: int = 10):
         return
     
     try:
+        # Get commits with ISO timestamp for better time calculation
         output, _, _ = run_git_command([
-            'log', f'-{limit}', '--pretty=format:%h|%an|%ar|%s'
+            'log', f'-{limit}', '--pretty=format:%h|%an|%ai|%s'
         ])
         
         if not output:
             print_info("No commits found.")
             return
         
-        headers = ["Hash", "Author", "When", "Message"]
-        rows = []
+        # Use the same formatting as interactive undo
+        from datetime import datetime
         
-        for line in output.split('\n'):
+        print(f"\n{SYMBOLS['save']} Recent Saves:")
+        print("=" * 80)
+        
+        for i, line in enumerate(output.split('\n')):
             if line:
                 parts = line.split('|', 3)
                 if len(parts) == 4:
-                    rows.append(parts)
+                    commit_hash, author, timestamp_str, message = parts
+                    
+                    # Calculate relative time (same logic as interactive undo)
+                    try:
+                        # Parse ISO timestamp, handle timezone offset
+                        timestamp_clean = timestamp_str.split(' +')[0].split(' -')[0]  # Remove timezone
+                        action_time = datetime.fromisoformat(timestamp_clean.replace(' ', 'T'))
+                        now = datetime.now()
+                        diff = now - action_time
+                        total_seconds = diff.total_seconds()
+                        
+                        if diff.days > 7:
+                            time_str = timestamp_clean.split('T')[0]
+                        elif diff.days > 0:
+                            time_str = f"{diff.days}d ago"
+                        elif total_seconds > 3600:
+                            hours = int(total_seconds // 3600)
+                            time_str = f"{hours}h ago"
+                        elif total_seconds > 60:
+                            minutes = int(total_seconds // 60)
+                            time_str = f"{minutes}m ago"
+                        else:
+                            time_str = "just now"
+                    except:
+                        time_str = timestamp_str.split(' ')[0]
+                    
+                    # Display in the same format as interactive undo
+                    choice_text = f"{commit_hash}: \"{message}\" by {author} ({time_str})"
+                    print(f"  {i+1:2d}. {choice_text}")
+                    # print(f"      {commit_hash} by {author}")
         
-        if rows:
-            display_table(f"{SYMBOLS['save']} Recent Saves", headers, rows)
+        print("=" * 80)
         
     except GitError as e:
         print_warning(f"Could not list saves: {e}")
@@ -474,6 +510,95 @@ def _list_stashes():
         
     except GitError as e:
         print_warning(f"Could not list stashes: {e}")
+
+
+def _list_history(limit: int, detailed: bool):
+    """Show history of state-changing actions."""
+    try:
+        actions = history_manager.get_history(limit)
+        
+        if not actions:
+            print_info("No actions in history.")
+            return
+        
+        # Use the same formatting as interactive undo
+        from datetime import datetime
+        
+        print(f"\n{SYMBOLS['clipboard']} Action History:")
+        print("=" * 80)
+        
+        # Get recent actions (most recent first, like undo)
+        recent_actions = list(reversed(actions))[:limit]
+        
+        for i, action in enumerate(recent_actions):
+            action_type = action['action_type']
+            
+            # Calculate relative time (same logic as interactive undo)
+            timestamp_str = action['timestamp'][:19].replace('T', ' ')
+            try:
+                action_time = datetime.fromisoformat(timestamp_str)
+                now = datetime.now()
+                diff = now - action_time
+                total_seconds = diff.total_seconds()
+                
+                if diff.days > 7:
+                    time_str = timestamp_str.split(' ')[0]
+                elif diff.days > 0:
+                    time_str = f"{diff.days}d ago"
+                elif total_seconds > 3600:
+                    hours = int(total_seconds // 3600)
+                    time_str = f"{hours}h ago"
+                elif total_seconds > 60:
+                    minutes = int(total_seconds // 60)
+                    time_str = f"{minutes}m ago"
+                else:
+                    time_str = "just now"
+            except:
+                time_str = timestamp_str
+            
+            # Format details (same logic as interactive undo)
+            details_dict = action.get('details', {})
+            if action_type == 'save':
+                message = details_dict.get('message', '')
+                details = f'"{message}"'
+            elif action_type == 'switch':
+                from_branch = details_dict.get('from_branch', '')
+                to_branch = details_dict.get('to_branch', '')
+                to_commit = details_dict.get('to_commit', '')
+                if to_commit:
+                    details = f"{from_branch} → {to_commit[:8]}"
+                else:
+                    details = f"{from_branch} → {to_branch}"
+            elif action_type == 'push':
+                branch = details_dict.get('branch', '')
+                force = details_dict.get('force', False)
+                details = f"to {branch}" + (" (force)" if force else "")
+            elif action_type == 'pull':
+                branch = details_dict.get('branch', '')
+                rebase = details_dict.get('rebase', False)
+                details = f"from {branch}" + (" (rebase)" if rebase else "")
+            elif action_type == 'stash':
+                message = details_dict.get('message', '')
+                details = f'"{message}"' if message else "untitled"
+            elif action_type == 'init':
+                project_name = details_dict.get('project_name', '')
+                details = f"project: {project_name}"
+            else:
+                details = str(details_dict)[:50]
+            
+            # Display in the same format as interactive undo, with optional timestamp
+            choice_text = f"{action_type.upper()}: {details} ({time_str})"
+            print(f"  {i+1:2d}. {choice_text}")
+            
+            # Only show timestamp if detailed flag is set
+            if detailed:
+                timestamp_display = timestamp_str.replace(' ', ' at ')  # Format: 2025-07-24 at 12:45:32
+                print(f"      {timestamp_display}")
+        
+        print("=" * 80)
+        
+    except HistoryError as e:
+        print_error(f"Failed to get history: {e}")
 
 
 @main.command()
@@ -1244,98 +1369,6 @@ def graph(all: bool):
         
     except GitError as e:
         print_error(f"Failed to show graph: {e}")
-
-
-@main.command()
-@click.option('--limit', '-n', default=10, help='Number of recent actions to show')
-@click.option('--detailed', '-d', is_flag=True, help='Show detailed timestamps for each action')
-def history(limit: int, detailed: bool):
-    """Show history of state-changing actions."""
-    try:
-        actions = history_manager.get_history(limit)
-        
-        if not actions:
-            print_info("No actions in history.")
-            return
-        
-        # Use the same formatting as interactive undo
-        from datetime import datetime
-        
-        print(f"\n{SYMBOLS['clipboard']} Action History:")
-        print("=" * 80)
-        
-        # Get recent actions (most recent first, like undo)
-        recent_actions = list(reversed(actions))[:limit]
-        
-        for i, action in enumerate(recent_actions):
-            action_type = action['action_type']
-            
-            # Calculate relative time (same logic as interactive undo)
-            timestamp_str = action['timestamp'][:19].replace('T', ' ')
-            try:
-                action_time = datetime.fromisoformat(timestamp_str)
-                now = datetime.now()
-                diff = now - action_time
-                total_seconds = diff.total_seconds()
-                
-                if diff.days > 7:
-                    time_str = timestamp_str.split(' ')[0]
-                elif diff.days > 0:
-                    time_str = f"{diff.days}d ago"
-                elif total_seconds > 3600:
-                    hours = int(total_seconds // 3600)
-                    time_str = f"{hours}h ago"
-                elif total_seconds > 60:
-                    minutes = int(total_seconds // 60)
-                    time_str = f"{minutes}m ago"
-                else:
-                    time_str = "just now"
-            except:
-                time_str = timestamp_str
-            
-            # Format details (same logic as interactive undo)
-            details_dict = action.get('details', {})
-            if action_type == 'save':
-                message = details_dict.get('message', '')
-                details = f'"{message}"'
-            elif action_type == 'switch':
-                from_branch = details_dict.get('from_branch', '')
-                to_branch = details_dict.get('to_branch', '')
-                to_commit = details_dict.get('to_commit', '')
-                if to_commit:
-                    details = f"{from_branch} → {to_commit[:8]}"
-                else:
-                    details = f"{from_branch} → {to_branch}"
-            elif action_type == 'push':
-                branch = details_dict.get('branch', '')
-                force = details_dict.get('force', False)
-                details = f"to {branch}" + (" (force)" if force else "")
-            elif action_type == 'pull':
-                branch = details_dict.get('branch', '')
-                rebase = details_dict.get('rebase', False)
-                details = f"from {branch}" + (" (rebase)" if rebase else "")
-            elif action_type == 'stash':
-                message = details_dict.get('message', '')
-                details = f'"{message}"' if message else "untitled"
-            elif action_type == 'init':
-                project_name = details_dict.get('project_name', '')
-                details = f"project: {project_name}"
-            else:
-                details = str(details_dict)[:50]
-            
-            # Display in the same format as interactive undo, with optional timestamp
-            choice_text = f"{action_type.upper()}: {details} ({time_str})"
-            print(f"  {i+1:2d}. {choice_text}")
-            
-            # Only show timestamp if detailed flag is set
-            if detailed:
-                timestamp_display = timestamp_str.replace(' ', ' at ')  # Format: 2025-07-24 at 12:45:32
-                print(f"      {timestamp_display}")
-        
-        print("=" * 80)
-        
-    except HistoryError as e:
-        print_error(f"Failed to get history: {e}")
 
 
 @main.command()

@@ -1,1 +1,0 @@
-# Fixed timestamp test
