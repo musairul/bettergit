@@ -697,64 +697,205 @@ def stash(message: Optional[str]):
 
 
 @main.command()
-def undo():
-    """Undo the last state-changing action."""
+@click.option('--interactive', '-i', is_flag=True, help='Interactive mode to select which action to undo')
+def undo(interactive: bool):
+    """Undo the last state-changing action or interactively select which action to undo."""
     try:
-        last_action = history_manager.get_last_action()
-        if not last_action:
+        if interactive:
+            _interactive_undo()
+        else:
+            _single_undo()
+            
+    except (GitError, HistoryError) as e:
+        print_error(f"Failed to undo: {e}")
+
+
+def _interactive_undo():
+    """Interactive undo that lets user select which action to undo."""
+    try:
+        # Get recent actions that can be undone
+        actions = history_manager.get_history(20)  # Get more actions for selection
+        
+        if not actions:
             print_info("No actions to undo.")
             return
         
-        action_type = last_action['action_type']
-        details = last_action['details']
-        undo_command = last_action.get('undo_command')
-        undo_details = last_action.get('undo_details', {})
-        
-        print_info(f"Last action: {action_type}")
-        if not confirm(f"Undo this action?", default=True):
-            return
-        
-        # Handle different undo scenarios
-        if action_type == 'save':
-            run_git_command(['reset', '--soft', 'HEAD~1'])
-            print_success("Undid last save (commit)")
-        
-        elif action_type == 'merge':
-            run_git_command(['reset', '--hard', 'ORIG_HEAD'])
-            print_success("Undid last merge")
-        
-        elif action_type == 'push':
-            if undo_details.get('dangerous'):
-                if not require_confirmation("undo push", details.get('branch', ''), "extreme"):
-                    return
+        # Filter actions that can be undone (have undo commands or are known types)
+        undoable_actions = []
+        for action in reversed(actions):  # Most recent first
+            action_type = action['action_type']
+            has_undo_command = action.get('undo_command') is not None
             
-            run_git_command(['push', '--force'])
-            print_success("Undid push (forced remote update)")
+            # Actions we know how to undo
+            known_undoable = action_type in ['save', 'merge', 'push', 'pull', 'stash', 'switch']
+            
+            if has_undo_command or known_undoable:
+                undoable_actions.append(action)
         
-        elif action_type == 'pull':
-            run_git_command(['reset', '--hard', 'HEAD@{1}'])
-            print_success("Undid last pull")
-        
-        elif action_type == 'stash':
-            run_git_command(['stash', 'pop'])
-            print_success("Undid stash (restored changes)")
-        
-        elif action_type == 'switch' and undo_command:
-            # Extract branch name from undo command
-            if 'git switch' in undo_command:
-                branch = undo_command.split()[-1]
-                run_git_command(['switch', branch])
-                print_success(f"Switched back to {branch}")
-        
-        else:
-            print_warning(f"Don't know how to undo action type: {action_type}")
+        if not undoable_actions:
+            print_info("No undoable actions found.")
             return
         
-        # Remove the action from history
-        history_manager.remove_last_action()
+        # Format actions for selection with human-readable details
+        from datetime import datetime
+        choices = []
         
-    except (GitError, HistoryError) as e:
-        print_error(f"Failed to undo: {e}")
+        for i, action in enumerate(undoable_actions):
+            action_id = action['id']
+            action_type = action['action_type']
+            
+            # Calculate relative time
+            timestamp_str = action['timestamp'][:19].replace('T', ' ')
+            try:
+                action_time = datetime.fromisoformat(timestamp_str)
+                now = datetime.now()
+                diff = now - action_time
+                total_seconds = diff.total_seconds()
+                
+                if diff.days > 7:
+                    time_str = timestamp_str.split(' ')[0]
+                elif diff.days > 0:
+                    time_str = f"{diff.days}d ago"
+                elif total_seconds > 3600:
+                    hours = int(total_seconds // 3600)
+                    time_str = f"{hours}h ago"
+                elif total_seconds > 60:
+                    minutes = int(total_seconds // 60)
+                    time_str = f"{minutes}m ago"
+                else:
+                    time_str = "just now"
+            except:
+                time_str = timestamp_str
+            
+            # Format details
+            details_dict = action.get('details', {})
+            if action_type == 'save':
+                message = details_dict.get('message', '')
+                details = f'"{message}"'
+            elif action_type == 'switch':
+                from_branch = details_dict.get('from_branch', '')
+                to_branch = details_dict.get('to_branch', '')
+                to_commit = details_dict.get('to_commit', '')
+                if to_commit:
+                    details = f"{from_branch} → {to_commit[:8]}"
+                else:
+                    details = f"{from_branch} → {to_branch}"
+            elif action_type == 'push':
+                branch = details_dict.get('branch', '')
+                force = details_dict.get('force', False)
+                details = f"to {branch}" + (" (force)" if force else "")
+            elif action_type == 'pull':
+                branch = details_dict.get('branch', '')
+                rebase = details_dict.get('rebase', False)
+                details = f"from {branch}" + (" (rebase)" if rebase else "")
+            elif action_type == 'stash':
+                message = details_dict.get('message', '')
+                details = f'"{message}"' if message else "untitled"
+            else:
+                details = str(details_dict)[:50]
+            
+            # Create choice display
+            choice_text = f"{action_type.upper()}: {details} ({time_str})"
+            choices.append((action, choice_text))
+        
+        if not choices:
+            print_info("No undoable actions found.")
+            return
+        
+        # Show selection menu
+        print_info("Select which action to undo (most recent first):")
+        selected_action = select_from_list(
+            "Choose action to undo:",
+            [choice[1] for choice in choices]
+        )
+        
+        if selected_action is None:
+            print_info("Undo cancelled.")
+            return
+        
+        # Find the selected action
+        selected_index = next(i for i, (_, text) in enumerate(choices) if text == selected_action)
+        action_to_undo = choices[selected_index][0]
+        
+        # Confirm the undo
+        action_type = action_to_undo['action_type']
+        if not confirm(f"Undo {action_type} action?", default=True):
+            print_info("Undo cancelled.")
+            return
+        
+        # Perform the undo
+        _perform_undo(action_to_undo)
+        
+        # Remove all actions from the selected one forward (since undoing affects later actions too)
+        actions_to_remove = undoable_actions[:selected_index + 1]
+        for action in actions_to_remove:
+            history_manager.remove_action(action['id'])
+        
+        print_success(f"Undid {action_type} action and {len(actions_to_remove)-1} subsequent actions.")
+        
+    except Exception as e:
+        print_error(f"Interactive undo failed: {e}")
+
+
+def _single_undo():
+    """Undo just the last action (original behavior)."""
+    last_action = history_manager.get_last_action()
+    if not last_action:
+        print_info("No actions to undo.")
+        return
+    
+    action_type = last_action['action_type']
+    print_info(f"Last action: {action_type}")
+    if not confirm(f"Undo this action?", default=True):
+        return
+    
+    _perform_undo(last_action)
+    
+    # Remove the action from history
+    history_manager.remove_last_action()
+
+
+def _perform_undo(action):
+    """Perform the actual undo operation for a given action."""
+    action_type = action['action_type']
+    details = action['details']
+    undo_command = action.get('undo_command')
+    undo_details = action.get('undo_details', {})
+    
+    # Handle different undo scenarios
+    if action_type == 'save':
+        run_git_command(['reset', '--soft', 'HEAD~1'])
+        print_success("Undid last save (commit)")
+    
+    elif action_type == 'merge':
+        run_git_command(['reset', '--hard', 'ORIG_HEAD'])
+        print_success("Undid last merge")
+    
+    elif action_type == 'push':
+        if undo_details.get('dangerous'):
+            if not require_confirmation("undo push", details.get('branch', ''), "extreme"):
+                return
+        
+        run_git_command(['push', '--force'])
+        print_success("Undid push (forced remote update)")
+    
+    elif action_type == 'pull':
+        run_git_command(['reset', '--hard', 'HEAD@{1}'])
+        print_success("Undid last pull")
+    
+    elif action_type == 'stash':
+        run_git_command(['stash', 'pop'])
+        print_success("Undid stash (restored changes)")
+    
+    elif action_type == 'switch' and undo_command:
+        # Extract branch name from undo command
+        if 'git switch' in undo_command:
+            branch = undo_command.split()[-1]
+            run_git_command(['switch', branch])
+            print_success(f"Switched back to {branch}")
+    
+    else:
+        print_warning(f"Don't know how to undo action type: {action_type}")
 
 
 @main.group()
@@ -1085,11 +1226,83 @@ def history(limit: int):
         
         for action in actions[-limit:]:
             action_id = str(action['id'])
-            timestamp = action['timestamp'][:19].replace('T', ' ')
-            action_type = action['action_type']
-            details = str(action.get('details', {}))[:50]
             
-            rows.append([action_id, timestamp, action_type, details])
+            # Make timestamp more human readable
+            timestamp_str = action['timestamp'][:19].replace('T', ' ')
+            # Convert to more friendly format like "2 hours ago" if recent
+            from datetime import datetime, timezone
+            try:
+                # Parse the timestamp - assume it's in local time since that's how it's stored
+                action_time = datetime.fromisoformat(timestamp_str)
+                
+                # Get current local time for comparison
+                now = datetime.now()
+                
+                # Calculate the difference
+                diff = now - action_time
+                total_seconds = diff.total_seconds()
+                
+                # Format based on time difference
+                if diff.days > 7:
+                    time_str = timestamp_str.split(' ')[0]  # Just the date for old entries
+                elif diff.days > 0:
+                    time_str = f"{diff.days}d ago"
+                elif total_seconds > 3600:
+                    hours = int(total_seconds // 3600)
+                    time_str = f"{hours}h ago"
+                elif total_seconds > 60:
+                    minutes = int(total_seconds // 60)
+                    time_str = f"{minutes}m ago"
+                elif total_seconds > 0:
+                    time_str = "just now"
+                else:
+                    # Future timestamp or same time
+                    time_str = "just now"
+            except Exception as e:
+                # Fallback to original timestamp if parsing fails
+                time_str = timestamp_str
+            
+            action_type = action['action_type']
+            
+            # Format details in a more human-readable way
+            details_dict = action.get('details', {})
+            if action_type == 'save':
+                message = details_dict.get('message', '')
+                files = details_dict.get('files', [])
+                if files and files != ['.']:
+                    file_list = ', '.join(files[:3])
+                    if len(files) > 3:
+                        file_list += f" (+{len(files)-3} more)"
+                    details = f'"{message}" ({file_list})'
+                else:
+                    details = f'"{message}"'
+            elif action_type == 'switch':
+                from_branch = details_dict.get('from_branch', '')
+                to_branch = details_dict.get('to_branch', '')
+                to_commit = details_dict.get('to_commit', '')
+                if to_commit:
+                    details = f"{from_branch} → {to_commit[:8]}"
+                else:
+                    details = f"{from_branch} → {to_branch}"
+            elif action_type == 'push':
+                branch = details_dict.get('branch', '')
+                force = details_dict.get('force', False)
+                details = f"to {branch}" + (" (force)" if force else "")
+            elif action_type == 'pull':
+                branch = details_dict.get('branch', '')
+                rebase = details_dict.get('rebase', False)
+                details = f"from {branch}" + (" (rebase)" if rebase else "")
+            elif action_type == 'stash':
+                message = details_dict.get('message', '')
+                details = f'"{message}"' if message else "untitled"
+            elif action_type == 'init':
+                project_name = details_dict.get('project_name', '')
+                details = f"project: {project_name}"
+            else:
+                # Fallback for other action types
+                details = str(details_dict)[:50]
+            
+            rows.append([action_id, time_str, action_type, details])
         
         display_table(f"{SYMBOLS['clipboard']} Action History", headers, rows)
         

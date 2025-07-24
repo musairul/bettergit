@@ -121,6 +121,33 @@ class ActionHistory:
         except Exception as e:
             raise HistoryError(f"Failed to remove last action: {e}")
     
+    def remove_action(self, action_id: int) -> Optional[Dict[str, Any]]:
+        """Remove an action with the specified ID and all actions after it."""
+        try:
+            history = self._load_history()
+            if not history:
+                return None
+            
+            # Find the action with the given ID
+            action_index = None
+            for i, action in enumerate(history):
+                if action['id'] == action_id:
+                    action_index = i
+                    break
+            
+            if action_index is None:
+                return None
+            
+            # Remove the action and all actions after it
+            removed_action = history[action_index]
+            history = history[:action_index]
+            
+            self._save_history(history)
+            return removed_action
+            
+        except Exception as e:
+            raise HistoryError(f"Failed to remove action: {e}")
+    
     def clear_history(self):
         """Clear all action history."""
         try:
