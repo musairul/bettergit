@@ -156,30 +156,53 @@ def _create_remote_repository():
 
 
 @main.command('save')
-@click.option('-m', '--message', required=True, help='Commit message')
-@click.argument('files', nargs=-1)
-def commit_save(message, files):
+@click.argument('args', nargs=-1)
+def commit_save(args):
     """Create a save (commit) with your changes.
     
-    Usage: bit save -m "message" [files]
+    Usage: 
+      bit save [files] "message"
+      bit save  (interactive mode)
     
     Examples:
-      bit save -m "added new feature" .
-      bit save -m "fixed bugs" file1.py file2.py
+      bit save file1.py file2.py "created app"
+      bit save . "fixed all bugs"
+      bit save "initial commit"
+      bit save
     """
     try:
         if not is_git_repository():
             print_error("Not in a Git repository. Use 'bit init' first.")
             return
         
-        # Use current directory if no files specified
-        if not files:
-            files = ['.']
-        
         # Check if there are any changes
         status_output, _, _ = run_git_command(['status', '--porcelain'])
         if not status_output:
             print_info("No changes to save.")
+            return
+        
+        files = []
+        message = ""
+        
+        if not args:
+            # Interactive mode - no arguments provided
+            files = _select_files_to_stage()
+            if not files:
+                print_info("No files selected.")
+                return
+                
+            message = prompt_text("Enter commit message: ")
+            if not message:
+                print_error("Commit message is required.")
+                return
+        else:
+            # Parse arguments to separate files from message
+            # Message is always the last argument and should be in quotes
+            message = args[-1]
+            files = list(args[:-1]) if len(args) > 1 else ['.']
+        
+        if not message:
+            print_error("Commit message is required.")
             return
         
         # Stage the specified files
@@ -200,10 +223,18 @@ def commit_save(message, files):
         run_git_command(['commit', '-m', message])
         print_success(f"Saved changes: {message}")
         
-        # History logging disabled to avoid CLI routing issues
+        # Log the action to history
+        history_manager.log_action(
+            "save",
+            {"message": message, "files": files},
+            undo_command="git reset --soft HEAD~1",
+            undo_details={"commit_message": message, "staged_files": files}
+        )
         
     except GitError as e:
         print_error(f"Failed to save changes: {e}")
+    except (HistoryError, ConfigError) as e:
+        print_warning(f"Could not log to history: {e}")
 
 
 def _show_git_status():
