@@ -647,8 +647,13 @@ def _list_history(limit: int, detailed: bool):
 
 @main.command()
 @click.argument('target')
-def switch(target: str):
-    """Switch between branches, saves (commits), or accounts."""
+@click.option('--create', '-c', is_flag=True, help='Create the branch if it does not exist')
+def switch(target: str, create: bool):
+    """Switch between branches, saves (commits), or accounts.
+    
+    If switching to a branch that doesn't exist, you will be prompted to create it,
+    or use -c/--create to create it automatically.
+    """
     try:
         if not is_git_repository():
             print_error("Not in a Git repository.")
@@ -658,11 +663,17 @@ def switch(target: str):
         target_type = _identify_switch_target(target)
         
         if target_type == 'branch':
-            _switch_branch(target)
+            _switch_branch(target, create)
         elif target_type == 'commit':
             _switch_commit(target)
         elif target_type == 'account':
             _switch_account(target)
+        elif target_type == 'unknown':
+            # Could be a new branch name
+            if create or confirm(f"Branch '{target}' does not exist. Create it?", default=True):
+                _create_and_switch_branch(target)
+            else:
+                print_info("Switch cancelled.")
         else:
             print_error(f"Could not identify target '{target}'. "
                        "It should be a branch name, commit hash, or account alias.")
@@ -695,23 +706,56 @@ def _identify_switch_target(target: str) -> str:
     return 'unknown'
 
 
-def _switch_branch(branch_name: str):
-    """Switch to a branch."""
+def _switch_branch(branch_name: str, create: bool = False):
+    """Switch to a branch, optionally creating it if it doesn't exist."""
     try:
-        # Switch to the branch
         current_branch = get_current_branch()
-        run_git_command(['switch', branch_name])
-        print_success(f"Switched to branch '{branch_name}'")
         
-        # Log the action
-        history_manager.log_action(
-            "switch",
-            {"from_branch": current_branch, "to_branch": branch_name},
-            undo_command=f"git switch {current_branch}" if current_branch else None
-        )
+        # Try to switch to the branch first
+        try:
+            run_git_command(['switch', branch_name])
+            print_success(f"Switched to branch '{branch_name}'")
+            
+            # Log the action
+            history_manager.log_action(
+                "switch",
+                {"from_branch": current_branch, "to_branch": branch_name},
+                undo_command=f"git switch {current_branch}" if current_branch else None
+            )
+            
+        except GitError as e:
+            # If switch failed, it might be because the branch doesn't exist
+            if "did not match any file(s) known to git" in str(e).lower() or "pathspec" in str(e).lower():
+                if create or confirm(f"Branch '{branch_name}' does not exist. Create it?", default=True):
+                    _create_and_switch_branch(branch_name)
+                else:
+                    print_info("Switch cancelled.")
+            else:
+                # Re-raise if it's a different error
+                raise e
         
     except GitError as e:
         print_error(f"Failed to switch branch: {e}")
+
+
+def _create_and_switch_branch(branch_name: str):
+    """Create a new branch and switch to it."""
+    try:
+        current_branch = get_current_branch()
+        
+        # Create and switch to the new branch
+        run_git_command(['switch', '-c', branch_name])
+        print_success(f"Created and switched to new branch '{branch_name}'")
+        
+        # Log the action
+        history_manager.log_action(
+            "create_branch",
+            {"from_branch": current_branch, "new_branch": branch_name},
+            undo_command=f"git switch {current_branch} && git branch -d {branch_name}" if current_branch else f"git branch -d {branch_name}"
+        )
+        
+    except GitError as e:
+        print_error(f"Failed to create branch: {e}")
 
 
 def _switch_commit(commit_hash: str):
