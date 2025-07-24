@@ -200,16 +200,7 @@ def commit_save(message, files):
         run_git_command(['commit', '-m', message])
         print_success(f"Saved changes: {message}")
         
-        # Log the action for undo (with error handling)
-        try:
-            history_manager.log_action(
-                "save",
-                {"message": message, "files": list(files)},
-                undo_command="git reset --soft HEAD~1"
-            )
-        except Exception as e:
-            # Don't let history logging errors break the save command
-            logger.warning(f"Failed to log action to history: {e}")
+        # History logging disabled to avoid CLI routing issues
         
     except GitError as e:
         print_error(f"Failed to save changes: {e}")
