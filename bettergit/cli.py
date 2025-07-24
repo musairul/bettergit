@@ -1248,7 +1248,8 @@ def graph(all: bool):
 
 @main.command()
 @click.option('--limit', '-n', default=10, help='Number of recent actions to show')
-def history(limit: int):
+@click.option('--detailed', '-d', is_flag=True, help='Show detailed timestamps for each action')
+def history(limit: int, detailed: bool):
     """Show history of state-changing actions."""
     try:
         actions = history_manager.get_history(limit)
@@ -1322,9 +1323,14 @@ def history(limit: int):
             else:
                 details = str(details_dict)[:50]
             
-            # Display in the same format as interactive undo
+            # Display in the same format as interactive undo, with optional timestamp
             choice_text = f"{action_type.upper()}: {details} ({time_str})"
             print(f"  {i+1:2d}. {choice_text}")
+            
+            # Only show timestamp if detailed flag is set
+            if detailed:
+                timestamp_display = timestamp_str.replace(' ', ' at ')  # Format: 2025-07-24 at 12:45:32
+                print(f"      {timestamp_display}")
         
         print("=" * 80)
         
