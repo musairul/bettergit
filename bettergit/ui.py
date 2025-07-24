@@ -201,24 +201,71 @@ def select_undo_point(message: str, choices: List[str]) -> Optional[int]:
             return None
         
         current_pos = 0
+        menu_lines_printed = 0
+        header_displayed = False
         
-        def display_choices():
-            # Clear screen and show choices
-            os.system('cls' if os.name == 'nt' else 'clear')
+        def clear_menu_lines(num_lines):
+            """Clear only the menu lines, not the header."""
+            if num_lines > 0:
+                # Move cursor up and clear each line
+                for _ in range(num_lines):
+                    print('\033[1A\033[2K', end='')  # Move up one line and clear it
+        
+        def display_header():
+            """Display the static header only once."""
             print(f"\n{message}")
-            print("Use arrow keys to navigate, Enter to select, Esc to cancel")
-            print(f"Will undo {current_pos + 1} action(s)\n")
+            print("Use arrow keys to navigate, Enter to select, Esc or Ctrl+C to cancel")
+            print()  # Empty line for spacing
+        
+        def display_menu():
+            nonlocal menu_lines_printed
             
-            for i, choice in enumerate(choices):
+            # Clear previous menu output (but not header)
+            clear_menu_lines(menu_lines_printed)
+            
+            # Calculate visible window for large lists
+            max_visible = 10  # Show max 10 items at once
+            start_idx = max(0, current_pos - max_visible // 2)
+            end_idx = min(len(choices), start_idx + max_visible)
+            
+            # Adjust start if we're near the end
+            if end_idx - start_idx < max_visible and start_idx > 0:
+                start_idx = max(0, end_idx - max_visible)
+            
+            lines_count = 0  # No dynamic counter line
+            
+            # Show ellipsis if there are items above
+            if start_idx > 0:
+                print("  ...")
+                lines_count += 1
+            
+            # Display visible choices
+            for i in range(start_idx, end_idx):
+                choice = choices[i]
                 if i <= current_pos:
                     # Highlight selected items in blue with > prefix
-                    print(f"\033[94m> {choice}\033[0m")
+                    if i == current_pos:
+                        print(f"\033[94m\033[7m> {choice}\033[0m")  # Reverse video for current selection
+                    else:
+                        print(f"\033[94m> {choice}\033[0m")
                 else:
                     # Normal display for unselected items
                     print(f"  {choice}")
+                lines_count += 1
+            
+            # Show ellipsis if there are items below
+            if end_idx < len(choices):
+                print("  ...")
+                lines_count += 1
+            
+            menu_lines_printed = lines_count
         
-        # Initial display
-        display_choices()
+        # Display header once
+        display_header()
+        header_displayed = True
+        
+        # Initial menu display
+        display_menu()
         
         while True:
             # Get key input
@@ -229,14 +276,16 @@ def select_undo_point(message: str, choices: List[str]) -> Optional[int]:
                     if key == b'H':  # Up arrow
                         if current_pos > 0:
                             current_pos -= 1
-                            display_choices()
+                            display_menu()
                     elif key == b'P':  # Down arrow
                         if current_pos < len(choices) - 1:
                             current_pos += 1
-                            display_choices()
+                            display_menu()
                 elif key == b'\r':  # Enter key
                     return current_pos
                 elif key == b'\x1b':  # Escape key
+                    return None
+                elif key == b'\x03':  # Ctrl+C
                     return None
             else:  # Unix/Linux/macOS
                 import sys, tty, termios
@@ -252,15 +301,17 @@ def select_undo_point(message: str, choices: List[str]) -> Optional[int]:
                             if key3 == 'A':  # Up arrow
                                 if current_pos > 0:
                                     current_pos -= 1
-                                    display_choices()
+                                    display_menu()
                             elif key3 == 'B':  # Down arrow
                                 if current_pos < len(choices) - 1:
                                     current_pos += 1
-                                    display_choices()
+                                    display_menu()
                         elif key2 == '':  # Just escape
                             return None
                     elif key == '\r' or key == '\n':  # Enter
                         return current_pos
+                    elif key == '\x03':  # Ctrl+C
+                        return None
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                     

@@ -18,7 +18,7 @@ from .ui import (
     confirm, prompt_text, prompt_password, select_from_list, 
     select_multiple, display_table, display_list, display_panel,
     display_git_graph, display_status_summary, require_confirmation,
-    SYMBOLS
+    select_undo_point, SYMBOLS
 )
 from .integrations import GitHubClient, IntegrationError
 
@@ -80,15 +80,30 @@ def init(project_name: Optional[str], no_remote: bool):
             print_info("Created README.md")
         
         # Set up remote if requested
+        remote_info = None
         if not no_remote:
             if confirm("Would you like to create a remote repository?", default=True):
-                _create_remote_repository()
+                remote_info = _create_remote_repository()
         
-        # Log the action
+        # Log the action with detailed information
+        init_details = {
+            "project_name": project_name or str(Path.cwd().name),
+            "project_path": str(Path.cwd()),
+            "created_readme": not readme_path.exists() or readme_path.stat().st_size == 0,
+            "remote_created": remote_info is not None,
+        }
+        
+        if remote_info:
+            init_details.update({
+                "remote_repo_name": remote_info["name"],
+                "remote_owner": remote_info["owner"],
+                "remote_url": remote_info["html_url"],
+                "remote_created_by_user": True  # User explicitly chose to create it
+            })
+        
         history_manager.log_action(
             "init",
-            {"project_name": project_name or str(Path.cwd().name)},
-            undo_command="rm -rf .git",
+            init_details,
             undo_details={"destructive": True}
         )
         
@@ -98,7 +113,11 @@ def init(project_name: Optional[str], no_remote: bool):
 
 
 def _create_remote_repository():
-    """Helper function to create a remote repository."""
+    """Helper function to create a remote repository.
+    
+    Returns:
+        Dict with repository info if successful, None if failed/cancelled
+    """
     try:
         # Get current account configuration
         current_account = config_manager.get_current_account()
@@ -117,7 +136,7 @@ def _create_remote_repository():
                 print_success("Token stored securely for future use")
             else:
                 print_warning("No token provided, skipping remote creation")
-                return
+                return None
         
         # Create GitHub client
         github = GitHubClient(token)
@@ -190,10 +209,21 @@ def _create_remote_repository():
         if use_ssh:
             print_info("🔑 Repository configured to use SSH keys for authentication")
         
+        # Return repository information for logging
+        return {
+            "name": repo_data['name'],
+            "owner": repo_data['owner']['login'],
+            "html_url": repo_data['html_url'],
+            "clone_url": clone_url,
+            "private": repo_data['private']
+        }
+        
     except IntegrationError as e:
         print_error(f"Failed to create remote repository: {e}")
+        return None
     except GitError as e:
         print_error(f"Git operation failed: {e}")
+        return None
 
 
 def _check_ssh_key_availability() -> bool:
@@ -1029,7 +1059,7 @@ def _interactive_undo():
             has_undo_command = action.get('undo_command') is not None
             
             # Actions we know how to undo
-            known_undoable = action_type in ['save', 'merge', 'push', 'pull', 'stash', 'switch']
+            known_undoable = action_type in ['save', 'merge', 'push', 'pull', 'stash', 'switch', 'init']
             
             if has_undo_command or known_undoable:
                 undoable_actions.append(action)
@@ -1093,6 +1123,10 @@ def _interactive_undo():
             elif action_type == 'stash':
                 message = details_dict.get('message', '')
                 details = f'"{message}"' if message else "untitled"
+            elif action_type == 'init':
+                project_name = details_dict.get('project_name', 'repository')
+                has_remote = details_dict.get('remote_created', False)
+                details = f"{project_name}" + (" with remote" if has_remote else " (local only)")
             else:
                 details = str(details_dict)[:50]
             
@@ -1105,18 +1139,18 @@ def _interactive_undo():
             return
         
         # Show selection menu with rewind explanation
-        print_info("Select how far back to undo (arrow keys select all actions from top down to selection):")
-        selected_action = select_from_list(
-            "Choose undo point (will undo all actions from most recent down to this one):",
+        print_info("Select action to undo (will rewind from most recent down to selected action):")
+        selected_index = select_undo_point(
+            "Choose undo point:",
             [choice[1] for choice in choices]
         )
         
-        if selected_action is None:
+        if selected_index is None:
             print_info("Undo cancelled.")
             return
         
-        # Find the selected action
-        selected_index = next(i for i, (_, text) in enumerate(choices) if text == selected_action)
+        # Get the selected action
+        selected_action = choices[selected_index][0]
         
         # Actions to undo (from most recent down to selected one)
         actions_to_undo = undoable_actions[:selected_index + 1]
@@ -1141,6 +1175,10 @@ def _interactive_undo():
                 branch = details_dict.get('branch', '')
                 force = details_dict.get('force', False)
                 details = f"to {branch}" + (" (force)" if force else "")
+            elif action_type == 'init':
+                project_name = details_dict.get('project_name', 'repository')
+                has_remote = details_dict.get('remote_created', False)
+                details = f"{project_name}" + (" with remote" if has_remote else " (local only)")
             else:
                 details = str(details_dict)[:30]
             
@@ -1231,6 +1269,9 @@ def _perform_undo(action):
             branch = undo_command.split()[-1]
             run_git_command(['switch', branch])
             print_success(f"Switched back to {branch}")
+    
+    elif action_type == 'init':
+        _undo_init(action)
     
     else:
         print_warning(f"Don't know how to undo action type: {action_type}")
@@ -1440,6 +1481,99 @@ def _delete_branch(branch_name: str):
         
     except GitError as e:
         print_error(f"Failed to delete branch: {e}")
+
+
+def _undo_init(action):
+    """Undo a 'bit init' action by removing local repository and optionally remote repository."""
+    details = action['details']
+    project_path = Path(details.get('project_path', '.'))
+    project_name = details.get('project_name', 'repository')
+    
+    print_info(f"Undoing initialization of repository: {project_name}")
+    
+    # Show what will be undone
+    items_to_remove = []
+    if (project_path / '.git').exists():
+        items_to_remove.append("• Local Git repository (.git directory)")
+    
+    if details.get('created_readme') and (project_path / 'README.md').exists():
+        items_to_remove.append("• README.md file created during init")
+    
+    remote_will_be_deleted = False
+    if details.get('remote_created') and details.get('remote_created_by_user'):
+        items_to_remove.append(f"• Remote repository: {details.get('remote_url', 'Unknown')}")
+        remote_will_be_deleted = True
+    
+    if not items_to_remove:
+        print_warning("Nothing to undo - repository files not found.")
+        return
+    
+    print_warning("This will remove:")
+    for item in items_to_remove:
+        print(f"  {item}")
+    
+    if remote_will_be_deleted:
+        print_warning("\n⚠️  WARNING: This will permanently delete the remote repository!")
+        print_warning("⚠️  This action cannot be undone!")
+    
+    if not confirm("\nProceed with undoing the repository initialization?", default=False):
+        print_info("Undo cancelled.")
+        return
+    
+    # Step 1: Delete remote repository if it was created by user action
+    if remote_will_be_deleted:
+        try:
+            _delete_remote_repository(details.get('remote_owner'), details.get('remote_repo_name'))
+            print_success("Deleted remote repository")
+        except Exception as e:
+            print_error(f"Failed to delete remote repository: {e}")
+            print_warning("Continuing with local cleanup...")
+    
+    # Step 2: Remove local .git directory
+    try:
+        git_dir = project_path / '.git'
+        if git_dir.exists():
+            import shutil
+            shutil.rmtree(git_dir)
+            print_success("Removed local Git repository")
+    except Exception as e:
+        print_error(f"Failed to remove .git directory: {e}")
+        return
+    
+    # Step 3: Remove README.md if it was created during init
+    try:
+        if details.get('created_readme'):
+            readme_path = project_path / 'README.md'
+            if readme_path.exists():
+                # Double-check it's the README we created
+                content = readme_path.read_text(encoding='utf-8')
+                if "A new project created with BetterGit" in content:
+                    readme_path.unlink()
+                    print_success("Removed README.md created during init")
+    except Exception as e:
+        print_warning(f"Failed to remove README.md: {e}")
+    
+    print_success(f"Successfully undid repository initialization for '{project_name}'")
+
+
+def _delete_remote_repository(owner: str, repo_name: str):
+    """Delete a remote repository via GitHub API."""
+    try:
+        # Get current account and token
+        current_account = config_manager.get_current_account()
+        token = config_manager.get_credential(current_account)
+        
+        if not token:
+            print_error("No GitHub token found. Cannot delete remote repository.")
+            print_info("You'll need to delete it manually at: https://github.com/{owner}/{repo_name}/settings")
+            return
+        
+        # Create GitHub client and delete repository
+        github = GitHubClient(token)
+        github.delete_repository(owner, repo_name)
+        
+    except Exception as e:
+        raise Exception(f"GitHub API error: {e}")
 
 
 @main.group()

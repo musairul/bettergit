@@ -153,3 +153,29 @@ class GitHubClient(IntegrationClient):
         except IntegrationError:
             # Fallback if we can't fetch the issue
             return f"feature/{issue_number}-work-on-issue"
+    
+    def delete_repository(self, repo_owner: str, repo_name: str) -> bool:
+        """
+        Delete a GitHub repository.
+        
+        Args:
+            repo_owner: The owner/organization of the repository
+            repo_name: The name of the repository
+            
+        Returns:
+            True if deletion was successful
+            
+        Raises:
+            IntegrationError: If the deletion fails
+        """
+        try:
+            # Make DELETE request to GitHub API
+            response = self._make_request("DELETE", f"/repos/{repo_owner}/{repo_name}")
+            return True
+        except IntegrationError as e:
+            if "404" in str(e):
+                raise IntegrationError(f"Repository {repo_owner}/{repo_name} not found")
+            elif "403" in str(e):
+                raise IntegrationError(f"Permission denied - you may not have admin access to {repo_owner}/{repo_name}")
+            else:
+                raise IntegrationError(f"Failed to delete repository: {e}")
